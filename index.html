@@ -477,6 +477,7 @@
     let currentPalette = [...DEFAULT_PALETTE];
     let textureDataUrl = '';
     let textureFileName = '';
+    let textureCanvasImage = null;
     let activeMode = 'flash';
     let audioObjectUrl = '';
     let recordedObjectUrl = '';
@@ -494,6 +495,7 @@
     let audioRecordDestination = null;
     let currentRecordingExtension = 'mp4';
     let currentRecordingLabel = 'MP4';
+    let recordingEffects = [];
     const activeRafs = new Set();
     const activeTimers = new Set();
 
@@ -546,6 +548,7 @@
     function clearTexture() {
       textureDataUrl = '';
       textureFileName = '';
+      textureCanvasImage = null;
       defs.querySelectorAll('[data-texture-pattern="true"]').forEach(node => node.remove());
       updateTextureUi();
       showToast('TEXTURA APAGADA');
@@ -1505,6 +1508,7 @@
     }
 
     function triggerByMode(id, mode = activeMode) {
+      queueRecordingEffect(id, mode);
       if (mode === 'flash') triggerFlash(id);
       if (mode === 'down') triggerWipe(id, 'down');
       if (mode === 'up') triggerWipe(id, 'up');
@@ -1601,6 +1605,7 @@
       activeRafs.clear();
       activeTimers.forEach(timer => clearTimeout(timer));
       activeTimers.clear();
+      recordingEffects = [];
       effects.replaceChildren();
       document.querySelectorAll('.hint').forEach(hint => hint.classList.remove('lit'));
       showToast('PANTALLAS EN NEGRO');
@@ -1848,6 +1853,7 @@
         image.onload = () => {
           textureDataUrl = reader.result;
           textureFileName = file.name.slice(0, 36);
+          textureCanvasImage = image;
           renderTexturePatterns();
           updateTextureUi();
           showToast('TEXTURA CARGADA');
@@ -1905,10 +1911,12 @@
 
     function updateAudioButtons() {
       const hasAudio = Boolean(audioPlayer.src);
-      const canRecord = hasAudio && isRecorderSupported() && !recordingActive && !recordingStarting;
+      const recorderInfo = getRecorderMimeInfo();
+      const canRecord = hasAudio && Boolean(recordCanvas.captureStream && recorderInfo) && !recordingActive && !recordingStarting;
       audioPlayBtn.disabled = !hasAudio || recordingActive || recordingStarting;
       recordBtn.disabled = !canRecord;
       stopRecordBtn.disabled = !(recordingActive || recordingStarting);
+      recordBtn.textContent = recorderInfo ? 'REC MP4 3-2-1' : 'SIN MP4';
 
       if (!hasAudio) {
         audioPlayBtn.textContent = 'PLAY';
@@ -1970,35 +1978,208 @@
       }
     }
 
-    function drawStageImageToCanvas(image) {
-      const ctx = recordCanvas.getContext('2d', { alpha: false });
+    function getRecordingDuration(mode) {
+      if (mode === 'flash') return getFlashDecayMs();
+      if (['down', 'up', 'right', 'left'].includes(mode)) return DURATIONS.wipe;
+      return DURATIONS[mode] || 1200;
+    }
+
+    function queueRecordingEffect(id, mode) {
+      if (!recordingActive || !SCREEN_BY_ID[id]) return;
+      recordingEffects.push({
+        id,
+        mode,
+        start: performance.now(),
+        duration: getRecordingDuration(mode)
+      });
+    }
+
+    function setRecordingTransform(ctx) {
       const scale = Math.min(RECORDING.width / STAGE.width, RECORDING.height / STAGE.height);
       const drawWidth = STAGE.width * scale;
       const drawHeight = STAGE.height * scale;
       const x = (RECORDING.width - drawWidth) / 2;
       const y = (RECORDING.height - drawHeight) / 2;
+      ctx.setTransform(scale, 0, 0, scale, x, y);
+    }
 
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, RECORDING.width, RECORDING.height);
-      ctx.drawImage(image, x, y, drawWidth, drawHeight);
+    function drawTextureCover(ctx, x, y, width, height) {
+      if (!textureCanvasImage || !textureCanvasImage.complete || !textureCanvasImage.naturalWidth || !textureCanvasImage.naturalHeight) return false;
+
+      const imageWidth = textureCanvasImage.naturalWidth;
+      const imageHeight = textureCanvasImage.naturalHeight;
+      const imageRatio = imageWidth / imageHeight;
+      const targetRatio = width / height;
+      let sx = 0;
+      let sy = 0;
+      let sw = imageWidth;
+      let sh = imageHeight;
+
+      if (imageRatio > targetRatio) {
+        sw = imageHeight * targetRatio;
+        sx = (imageWidth - sw) / 2;
+      } else {
+        sh = imageWidth / targetRatio;
+        sy = (imageHeight - sh) / 2;
+      }
+
+      ctx.drawImage(textureCanvasImage, sx, sy, sw, sh, x, y, width, height);
+      return true;
+    }
+
+    function drawRecordingFill(ctx, id, x, y, width, height, opacity = 1) {
+      if (width <= 0 || height <= 0 || opacity <= 0) return;
+
+      ctx.save();
+      ctx.globalAlpha = clamp(opacity, 0, 1);
+      if (!drawTextureCover(ctx, x, y, width, height)) {
+        ctx.fillStyle = colorFor(id);
+        ctx.fillRect(x, y, width, height);
+      }
+      ctx.restore();
+    }
+
+    function drawRecordingCircleFill(ctx, id, cx, cy, radius, opacity) {
+      if (radius <= 0 || opacity <= 0) return;
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.clip();
+      drawRecordingFill(ctx, id, box.x, box.y, box.width, box.height, opacity);
+      ctx.restore();
+    }
+
+    function drawRecordingEffect(ctx, effect, now) {
+      const box = SCREEN_BY_ID[effect.id];
+      if (!box) return false;
+
+      const t = clamp((now - effect.start) / effect.duration, 0, 1);
+      const mode = effect.mode;
+
+      if (mode === 'flash') {
+        drawRecordingFill(ctx, effect.id, box.x, box.y, box.width, box.height, 1 - easeOutCubic(t));
+        return t < 1;
+      }
+
+      if (['down', 'up', 'right', 'left'].includes(mode)) {
+        const reveal = easeInOutCubic(Math.min(t / 0.62, 1));
+        const opacity = t < 0.62 ? 1 : 1 - ((t - 0.62) / 0.38);
+        let x = box.x;
+        let y = box.y;
+        let width = box.width;
+        let height = box.height;
+
+        if (mode === 'down') {
+          height = box.height * reveal;
+        } else if (mode === 'up') {
+          height = box.height * reveal;
+          y = box.y + box.height - height;
+        } else if (mode === 'right') {
+          width = box.width * reveal;
+        } else if (mode === 'left') {
+          width = box.width * reveal;
+          x = box.x + box.width - width;
+        }
+
+        drawRecordingFill(ctx, effect.id, x, y, width, height, opacity);
+        return t < 1;
+      }
+
+      if (mode === 'riseFall') {
+        const travel = Math.sin(Math.PI * t);
+        drawRecordingFill(ctx, effect.id, box.x, box.y + box.height * (1 - travel), box.width, box.height, 1);
+        return t < 1;
+      }
+
+      if (mode === 'riseOut') {
+        const move = easeInOutCubic(t);
+        drawRecordingFill(ctx, effect.id, box.x, box.y + box.height - box.height * 2.08 * move, box.width, box.height, 1);
+        return t < 1;
+      }
+
+      if (mode === 'pulse') {
+        const first = Math.max(0, 1 - Math.abs(t - 0.06) / 0.1);
+        const second = Math.max(0, 0.92 - Math.abs(t - 0.24) / 0.2);
+        const tail = t > 0.18 ? Math.max(0, 1 - ((t - 0.18) / 0.82)) * 0.42 : 0;
+        drawRecordingFill(ctx, effect.id, box.x, box.y, box.width, box.height, Math.min(1, Math.max(first, second, tail)));
+        return t < 1;
+      }
+
+      if (mode === 'iris') {
+        const open = easeInOutCubic(Math.min(t / 0.58, 1));
+        const opacity = t < 0.62 ? 1 : 1 - ((t - 0.62) / 0.38);
+        const width = box.width * open;
+        drawRecordingFill(ctx, effect.id, box.x + (box.width - width) / 2, box.y, width, box.height, opacity);
+        return t < 1;
+      }
+
+      if (mode === 'circle') {
+        const grow = easeOutCubic(Math.min(t / 0.72, 1));
+        const opacity = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        drawRecordingCircleFill(ctx, effect.id, box.x + box.width / 2, box.y + box.height / 2, Math.min(box.width, box.height) * 0.5 * grow, opacity);
+        return t < 1;
+      }
+
+      if (mode === 'shutter') {
+        const barCount = box.width > 700 ? 18 : 6;
+        const gapRatio = 0.18;
+        const slot = box.width / barCount;
+        const fromLeft = box.x + box.width / 2 < STAGE.width / 2;
+        const fade = t < 0.7 ? 1 : 1 - ((t - 0.7) / 0.3);
+        for (let i = 0; i < barCount; i += 1) {
+          const order = fromLeft ? i : barCount - 1 - i;
+          const local = clamp((t - order * 0.035) / 0.24, 0, 1);
+          const eased = easeOutCubic(local);
+          drawRecordingFill(ctx, effect.id, box.x + slot * i + slot * gapRatio / 2, box.y + (box.height - box.height * eased) / 2, slot * (1 - gapRatio), box.height * eased, fade * eased);
+        }
+        return t < 1;
+      }
+
+      if (mode === 'scanlines') {
+        const lineCount = Math.max(4, Math.min(14, Math.round(box.height / 80)));
+        const slot = box.height / lineCount;
+        const fade = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        for (let i = 0; i < lineCount; i += 1) {
+          const order = Math.abs(i - (lineCount - 1) / 2);
+          const local = clamp((t - order * 0.045) / 0.28, 0, 1);
+          drawRecordingFill(ctx, effect.id, box.x, box.y + slot * i + slot * 0.2, box.width, slot * 0.44, easeOutCubic(local) * fade);
+        }
+        return t < 1;
+      }
+
+      if (mode === 'mosaic') {
+        const cols = box.width > 700 ? 12 : 4;
+        const rows = box.height > 500 ? 5 : 3;
+        const cellWidth = box.width / cols;
+        const cellHeight = box.height / rows;
+        const fade = t < 0.76 ? 1 : 1 - ((t - 0.76) / 0.24);
+        for (let row = 0; row < rows; row += 1) {
+          for (let col = 0; col < cols; col += 1) {
+            const local = clamp((t - (row + col) * 0.028) / 0.22, 0, 1);
+            drawRecordingFill(ctx, effect.id, box.x + col * cellWidth, box.y + row * cellHeight, cellWidth + 0.5, cellHeight + 0.5, easeOutCubic(local) * fade);
+          }
+        }
+        return t < 1;
+      }
+
+      const genericFade = t < 0.74 ? 1 : 1 - ((t - 0.74) / 0.26);
+      drawRecordingFill(ctx, effect.id, box.x, box.y, box.width, box.height, Math.max(0, genericFade) * 0.9);
+      return t < 1;
     }
 
     async function drawStageToRecordCanvas() {
-      const svgText = new XMLSerializer().serializeToString(stage);
-      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const image = new Image();
+      const ctx = recordCanvas.getContext('2d', { alpha: false });
+      const now = performance.now();
 
-      try {
-        await new Promise((resolve, reject) => {
-          image.onload = resolve;
-          image.onerror = reject;
-          image.src = url;
-        });
-        drawStageImageToCanvas(image);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, RECORDING.width, RECORDING.height);
+      setRecordingTransform(ctx);
+      recordingEffects = recordingEffects.filter(effect => drawRecordingEffect(ctx, effect, now));
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
     function startRecordingRenderLoop() {
@@ -2089,6 +2270,7 @@
       audioPlayer.muted = false;
       audioPlayer.volume = 1;
       await ensureAudioRouting();
+      recordingEffects = [];
       await drawStageToRecordCanvas();
 
       const canvasStream = recordCanvas.captureStream(RECORDING.fps);
