@@ -1873,9 +1873,7 @@
       const types = [
         { mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', extension: 'mp4', label: 'MP4' },
         { mimeType: 'video/mp4;codecs="avc1.64001F,mp4a.40.2"', extension: 'mp4', label: 'MP4' },
-        { mimeType: 'video/mp4', extension: 'mp4', label: 'MP4' },
-        { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm', label: 'WEBM' },
-        { mimeType: 'video/webm', extension: 'webm', label: 'WEBM' }
+        { mimeType: 'video/mp4', extension: 'mp4', label: 'MP4' }
       ];
       return types.find(type => MediaRecorder.isTypeSupported(type.mimeType)) || null;
     }
