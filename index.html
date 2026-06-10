@@ -127,6 +127,7 @@
     }
 
     #imageInput,
+    #textureInput,
     #audioInput {
       position: absolute;
       inline-size: 1px;
@@ -171,6 +172,12 @@
     .action-btn:disabled {
       opacity: 0.35;
       cursor: default;
+    }
+
+    .upload-label.loaded {
+      border-color: rgba(255, 255, 255, 0.72);
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
     }
 
     .download-link[hidden] {
@@ -325,14 +332,17 @@
     <button id="audioPlayBtn" class="action-btn" type="button" disabled>PLAY</button>
     <button id="recordBtn" class="action-btn" type="button" disabled>REC VIDEO 3-2-1</button>
     <button id="stopRecordBtn" class="action-btn recording" type="button" disabled>STOP REC</button>
-    <a id="downloadVideoLink" class="download-link" href="#" download="aladin_show_2400x1200.webm" hidden>BAJAR VIDEO</a>
+    <a id="downloadVideoLink" class="download-link" href="#" download="aladin_show_2400x1200.mp4" hidden>BAJAR VIDEO</a>
     <span id="audioStatus" class="hint"><span class="label">SIN AUDIO</span></span>
   </div>
 
   <div id="controlBar">
     <div class="control-row">
-      <label class="upload-label" for="imageInput">IMG</label>
+      <label class="upload-label" for="imageInput">PALETA IMG</label>
       <input id="imageInput" type="file" accept="image/*">
+      <label id="textureUploadLabel" class="upload-label" for="textureInput">TEXTURA PNG</label>
+      <input id="textureInput" type="file" accept="image/png,image/*">
+      <button id="clearTextureBtn" class="action-btn" type="button" hidden>TEX OFF</button>
       <div id="paletteSwatches" aria-label="Paleta elegida"></div>
       <label class="decay-control" style="--mode-color:#ff8a22">
         <span>DECAY</span>
@@ -385,8 +395,8 @@
     const MODES = {
       q: { id: 'flash', key: 'Q', label: 'FLASH' },
       w: { id: 'down', key: 'W', label: 'ARRIBA ABAJO' },
-      e: { id: 'up', key: 'E', label: 'ABAJO ARRIBA' },
-      r: { id: 'right', key: 'R', label: 'IZQ DER' },
+      e: { id: 'riseFall', key: 'E', label: 'SUBE BAJA' },
+      r: { id: 'riseOut', key: 'R', label: 'SALE ARRIBA' },
       t: { id: 'left', key: 'T', label: 'DER IZQ' },
       y: { id: 'circle', key: 'Y', label: 'CIRCULOS' },
       u: { id: 'pulse', key: 'U', label: 'DOBLE' },
@@ -415,6 +425,8 @@
     const DURATIONS = {
       wipe: 960,
       circle: 1060,
+      riseFall: 1240,
+      riseOut: 1120,
       pulse: 1180,
       iris: 1050,
       ring: 1120,
@@ -446,6 +458,9 @@
     const modeLegend = document.getElementById('modeLegend');
     const paletteSwatches = document.getElementById('paletteSwatches');
     const imageInput = document.getElementById('imageInput');
+    const textureInput = document.getElementById('textureInput');
+    const textureUploadLabel = document.getElementById('textureUploadLabel');
+    const clearTextureBtn = document.getElementById('clearTextureBtn');
     const audioInput = document.getElementById('audioInput');
     const audioPlayer = document.getElementById('audioPlayer');
     const audioPlayBtn = document.getElementById('audioPlayBtn');
@@ -460,17 +475,25 @@
     const toast = document.getElementById('toast');
 
     let currentPalette = [...DEFAULT_PALETTE];
+    let textureDataUrl = '';
+    let textureFileName = '';
     let activeMode = 'flash';
     let audioObjectUrl = '';
     let recordedObjectUrl = '';
     let mediaRecorder = null;
     let recordingStream = null;
+    let recordingOwnedTracks = [];
     let recordingChunks = [];
     let recordingActive = false;
     let renderRecordingFrame = false;
     let renderRecordingRaf = 0;
     let recordingStarting = false;
     let toastTimer = null;
+    let audioContext = null;
+    let audioSourceNode = null;
+    let audioRecordDestination = null;
+    let currentRecordingExtension = 'mp4';
+    let currentRecordingLabel = 'MP4';
     const activeRafs = new Set();
     const activeTimers = new Set();
 
@@ -504,6 +527,84 @@
     function colorFor(id) {
       const screen = SCREEN_BY_ID[id];
       return currentPalette[(screen ? screen.colorIndex : 0) % currentPalette.length];
+    }
+
+    function texturePatternId(id) {
+      return 'texture-' + id.replace(/[^a-z0-9_-]/g, '-');
+    }
+
+    function paintFor(id) {
+      return textureDataUrl ? 'url(#' + texturePatternId(id) + ')' : colorFor(id);
+    }
+
+    function updateTextureUi() {
+      textureUploadLabel.classList.toggle('loaded', Boolean(textureDataUrl));
+      textureUploadLabel.title = textureDataUrl ? textureFileName : 'Cargar textura PNG con transparencia';
+      clearTextureBtn.hidden = !textureDataUrl;
+    }
+
+    function clearTexture() {
+      textureDataUrl = '';
+      textureFileName = '';
+      defs.querySelectorAll('[data-texture-pattern="true"]').forEach(node => node.remove());
+      updateTextureUi();
+      showToast('TEXTURA APAGADA');
+    }
+
+    function renderTexturePatterns() {
+      defs.querySelectorAll('[data-texture-pattern="true"]').forEach(node => node.remove());
+      if (!textureDataUrl) return;
+
+      SCREENS.forEach(screen => {
+        const pattern = svgEl('pattern', {
+          id: texturePatternId(screen.id),
+          x: screen.x,
+          y: screen.y,
+          width: screen.width,
+          height: screen.height,
+          patternUnits: 'userSpaceOnUse',
+          'data-texture-pattern': 'true'
+        });
+        const image = svgEl('image', {
+          x: screen.x,
+          y: screen.y,
+          width: screen.width,
+          height: screen.height,
+          preserveAspectRatio: 'xMidYMid slice',
+          href: textureDataUrl
+        });
+        image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', textureDataUrl);
+        pattern.appendChild(image);
+        defs.appendChild(pattern);
+      });
+    }
+
+    function textureImageFor(id, attrs = {}) {
+      const screen = SCREEN_BY_ID[id];
+      if (!screen) return null;
+
+      const imageAttrs = {
+        x: screen.x,
+        y: screen.y,
+        width: screen.width,
+        height: screen.height,
+        preserveAspectRatio: 'xMidYMid slice',
+        opacity: 1,
+        ...attrs,
+        href: textureDataUrl
+      };
+      delete imageAttrs.fill;
+      delete imageAttrs.stroke;
+      delete imageAttrs['stroke-width'];
+
+      const image = svgEl('image', imageAttrs);
+      image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', textureDataUrl);
+      return image;
+    }
+
+    function visualRectFor(id, attrs = {}) {
+      if (textureDataUrl) return textureImageFor(id, attrs);
+      return svgEl('rect', { ...attrs, fill: attrs.fill || colorFor(id) });
     }
 
     function setupStage() {
@@ -575,15 +676,23 @@
       return group;
     }
 
-    function addImpactFill(group, box, color, opacity = 0.66) {
-      const rect = svgEl('rect', {
-        x: box.x,
-        y: box.y,
-        width: box.width,
-        height: box.height,
-        fill: color,
-        opacity
-      });
+    function addImpactFill(group, box, fill, opacity = 0.66, id = '') {
+      const rect = textureDataUrl && id
+        ? visualRectFor(id, {
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+            opacity
+          })
+        : svgEl('rect', {
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+            fill,
+            opacity
+          });
       group.appendChild(rect);
       return rect;
     }
@@ -598,12 +707,11 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const colorRect = svgEl('rect', {
+      const colorRect = visualRectFor(id, {
         x: box.x,
         y: box.y,
         width: box.width,
         height: box.height,
-        fill: colorFor(id),
         opacity: 1
       });
 
@@ -619,7 +727,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const rect = svgEl('rect', { fill: colorFor(id), opacity: 1 });
+      const rect = visualRectFor(id, { opacity: 1 });
       group.appendChild(rect);
 
       animate(DURATIONS.wipe, t => {
@@ -651,6 +759,46 @@
       }, () => removeNode(group));
     }
 
+    function triggerRiseFall(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const rect = visualRectFor(id, {
+        x: box.x,
+        y: box.y + box.height,
+        width: box.width,
+        height: box.height,
+        opacity: 1
+      });
+      group.appendChild(rect);
+
+      animate(DURATIONS.riseFall, t => {
+        const travel = Math.sin(Math.PI * t);
+        rect.setAttribute('y', (box.y + box.height * (1 - travel)).toFixed(2));
+      }, () => removeNode(group));
+    }
+
+    function triggerRiseOut(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const rect = visualRectFor(id, {
+        x: box.x,
+        y: box.y + box.height,
+        width: box.width,
+        height: box.height,
+        opacity: 1
+      });
+      group.appendChild(rect);
+
+      animate(DURATIONS.riseOut, t => {
+        const move = easeInOutCubic(t);
+        rect.setAttribute('y', (box.y + box.height - box.height * 2.08 * move).toFixed(2));
+      }, () => removeNode(group));
+    }
+
     function triggerCircle(id) {
       const box = SCREEN_BY_ID[id];
       if (!box) return;
@@ -663,7 +811,7 @@
         cx,
         cy,
         r: 0,
-        fill: colorFor(id),
+        fill: paintFor(id),
         opacity: 1
       });
       group.appendChild(circle);
@@ -677,6 +825,11 @@
     }
 
     function triggerCenterCircle() {
+      if (textureDataUrl) {
+        triggerIds(ALL_IDS, 36, 'circle');
+        return;
+      }
+
       const group = addEffectGroup('clip-all');
       const circle = svgEl('circle', {
         cx: STAGE.width / 2,
@@ -701,12 +854,11 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const rect = svgEl('rect', {
+      const rect = visualRectFor(id, {
         x: box.x,
         y: box.y,
         width: box.width,
         height: box.height,
-        fill: colorFor(id),
         opacity: 0
       });
       group.appendChild(rect);
@@ -725,12 +877,11 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const rect = svgEl('rect', {
+      const rect = visualRectFor(id, {
         x: box.x + box.width / 2,
         y: box.y,
         width: 0.01,
         height: box.height,
-        fill: colorFor(id),
         opacity: 1
       });
       group.appendChild(rect);
@@ -757,7 +908,7 @@
         cy: box.y + box.height / 2,
         r: 0.01,
         fill: 'none',
-        stroke: colorFor(id),
+        stroke: paintFor(id),
         'stroke-width': strokeWidth,
         opacity: 1
       });
@@ -783,12 +934,11 @@
       const fromLeft = box.x + box.width / 2 < STAGE.width / 2;
 
       for (let i = 0; i < barCount; i += 1) {
-        const rect = svgEl('rect', {
+        const rect = visualRectFor(id, {
           x: box.x + slot * i + slot * gapRatio / 2,
           y: box.y,
           width: slot * (1 - gapRatio),
           height: box.height,
-          fill: colorFor(id),
           opacity: 0
         });
         group.appendChild(rect);
@@ -815,8 +965,8 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.68);
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.68, id);
       const strokeWidth = Math.max(16, Math.min(box.width, box.height) * 0.08);
       const length = 2 * (box.width + box.height);
       const path = svgEl('path', {
@@ -852,15 +1002,14 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.64);
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.64, id);
       const stripeHeight = Math.max(28, box.height * 0.16);
-      const stripe = svgEl('rect', {
+      const stripe = visualRectFor(id, {
         x: box.x,
         y: box.y - stripeHeight,
         width: box.width,
         height: stripeHeight,
-        fill: color,
         opacity: 1
       });
       group.appendChild(stripe);
@@ -879,8 +1028,8 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.64);
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.64, id);
       const band = box.width * 0.34 + box.height * 0.28;
       const slash = svgEl('polygon', { fill: color, opacity: 1 });
       group.appendChild(slash);
@@ -906,10 +1055,10 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.66);
-      const left = svgEl('rect', { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, fill: color, opacity: 1 });
-      const right = svgEl('rect', { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, fill: color, opacity: 1 });
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.66, id);
+      const left = visualRectFor(id, { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, opacity: 1 });
+      const right = visualRectFor(id, { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, opacity: 1 });
       group.append(left, right);
 
       animate(DURATIONS.doors, t => {
@@ -930,7 +1079,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const lineCount = box.width > 700 ? 8 : 4;
       const span = box.width + box.height;
       const lines = [];
@@ -969,19 +1118,18 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.62);
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.62, id);
       const lineCount = Math.max(4, Math.min(14, Math.round(box.height / 80)));
       const slot = box.height / lineCount;
       const lines = [];
 
       for (let i = 0; i < lineCount; i += 1) {
-        const rect = svgEl('rect', {
+        const rect = visualRectFor(id, {
           x: box.x,
           y: box.y + slot * i + slot * 0.2,
           width: box.width,
           height: slot * 0.44,
-          fill: color,
           opacity: 0
         });
         group.appendChild(rect);
@@ -1004,8 +1152,8 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.62);
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.62, id);
       const cols = box.width > 700 ? 12 : 4;
       const rows = box.height > 500 ? 5 : 3;
       const cellWidth = box.width / cols;
@@ -1014,12 +1162,11 @@
 
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < cols; col += 1) {
-          const rect = svgEl('rect', {
+          const rect = visualRectFor(id, {
             x: box.x + col * cellWidth,
             y: box.y + row * cellHeight,
             width: cellWidth + 0.5,
             height: cellHeight + 0.5,
-            fill: color,
             opacity: 0
           });
           group.appendChild(rect);
@@ -1042,7 +1189,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const lineCount = box.width > 700 ? 16 : 6;
       const span = Math.hypot(box.width, box.height);
       const lines = [];
@@ -1080,14 +1227,13 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
-      const impact = addImpactFill(group, box, color, 0.64);
-      const ribbon = svgEl('rect', {
+      const color = paintFor(id);
+      const impact = addImpactFill(group, box, color, 0.64, id);
+      const ribbon = visualRectFor(id, {
         x: box.x,
         y: box.y + box.height / 2,
         width: box.width,
         height: 0.01,
-        fill: color,
         opacity: 1
       });
       group.appendChild(ribbon);
@@ -1139,7 +1285,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const blob = svgEl('path', { fill: color, opacity: 1 });
       group.appendChild(blob);
 
@@ -1158,7 +1304,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const rings = [];
       for (let i = 0; i < 4; i += 1) {
         const ring = svgEl('circle', {
@@ -1190,7 +1336,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const wave = svgEl('path', { fill: color, opacity: 1 });
       group.appendChild(wave);
 
@@ -1222,7 +1368,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const blobs = [
         svgEl('path', { fill: color, opacity: 1 }),
         svgEl('path', { fill: color, opacity: 0.74 }),
@@ -1263,7 +1409,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const circles = [];
       const count = box.width > 700 ? 16 : 7;
       for (let i = 0; i < count; i += 1) {
@@ -1299,7 +1445,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const blobs = [];
       for (let i = 0; i < 6; i += 1) {
         const circle = svgEl('circle', {
@@ -1331,7 +1477,7 @@
       if (!box) return;
 
       const group = addEffectGroup('clip-' + id);
-      const color = colorFor(id);
+      const color = paintFor(id);
       const melt = svgEl('path', { fill: color, opacity: 1 });
       group.appendChild(melt);
 
@@ -1362,6 +1508,8 @@
       if (mode === 'flash') triggerFlash(id);
       if (mode === 'down') triggerWipe(id, 'down');
       if (mode === 'up') triggerWipe(id, 'up');
+      if (mode === 'riseFall') triggerRiseFall(id);
+      if (mode === 'riseOut') triggerRiseOut(id);
       if (mode === 'right') triggerWipe(id, 'right');
       if (mode === 'left') triggerWipe(id, 'left');
       if (mode === 'circle') triggerCircle(id);
@@ -1409,7 +1557,7 @@
       }
 
       if ([
-        'flash', 'pulse', 'iris', 'ring', 'shutter', 'outline', 'scanner',
+        'flash', 'riseFall', 'riseOut', 'pulse', 'iris', 'ring', 'shutter', 'outline', 'scanner',
         'diagonal', 'doors', 'diagonalFan', 'scanlines', 'mosaic', 'diagonalRain', 'ribbon',
         'blob', 'ripples', 'liquid', 'fluid', 'bubbles', 'nebula', 'melt'
       ].includes(mode)) {
@@ -1424,12 +1572,11 @@
 
       const group = addEffectGroup('clip-all');
       const rects = SCREENS.map(screen => {
-        const rect = svgEl('rect', {
+        const rect = visualRectFor(screen.id, {
           x: screen.x,
           y: screen.y,
           width: 0.01,
           height: screen.height,
-          fill: colorFor(screen.id),
           opacity: 1
         });
         group.appendChild(rect);
@@ -1605,13 +1752,13 @@
       for (let pixel = 0; pixel < totalPixels; pixel += step) {
         const i = pixel * 4;
         const alpha = data[i + 3];
-        if (alpha < 160) continue;
+        if (alpha < 32) continue;
 
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
         const { s, l } = rgbToHsl(r, g, b);
-        if (l < 0.11 || l > 0.93 || s < 0.2) continue;
+        if (l < 0.04 || l > 0.98) continue;
 
         const key = [r >> 4, g >> 4, b >> 4].join('-');
         const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0, s: 0, l: 0 };
@@ -1635,7 +1782,7 @@
           r,
           g,
           b,
-          score: bucket.count * (0.65 + s) * balance
+          score: bucket.count * (s < 0.08 ? 0.82 : 0.65 + s) * balance
         };
       }).sort((a, b) => b.score - a.score);
 
@@ -1653,6 +1800,16 @@
       return chosen.map(color => rgbToHex(color.r, color.g, color.b));
     }
 
+    function completePalette(extracted) {
+      if (!extracted.length) return [...DEFAULT_PALETTE];
+
+      const filled = [...extracted];
+      while (filled.length < 6) {
+        filled.push(extracted[filled.length % extracted.length]);
+      }
+      return filled.slice(0, 6);
+    }
+
     function loadImageFile(file) {
       if (!file) return;
 
@@ -1668,7 +1825,7 @@
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
         const extracted = pickPaletteFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
-        currentPalette = [...extracted, ...DEFAULT_PALETTE].slice(0, 6);
+        currentPalette = completePalette(extracted);
         renderPalette();
         showToast('PALETA CARGADA');
         URL.revokeObjectURL(url);
@@ -1682,6 +1839,26 @@
       image.src = url;
     }
 
+    function loadTextureFile(file) {
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          textureDataUrl = reader.result;
+          textureFileName = file.name.slice(0, 36);
+          renderTexturePatterns();
+          updateTextureUi();
+          showToast('TEXTURA CARGADA');
+        };
+        image.onerror = () => showToast('NO PUDE LEER ESA TEXTURA');
+        image.src = reader.result;
+      };
+      reader.onerror = () => showToast('NO PUDE LEER ESA TEXTURA');
+      reader.readAsDataURL(file);
+    }
+
     function sleep(ms) {
       return new Promise(resolve => window.setTimeout(resolve, ms));
     }
@@ -1690,18 +1867,42 @@
       audioStatus.textContent = text;
     }
 
-    function isRecorderSupported() {
-      return Boolean(window.MediaRecorder && recordCanvas.captureStream);
+    function getRecorderMimeInfo() {
+      if (!window.MediaRecorder) return null;
+
+      const types = [
+        { mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', extension: 'mp4', label: 'MP4' },
+        { mimeType: 'video/mp4;codecs="avc1.64001F,mp4a.40.2"', extension: 'mp4', label: 'MP4' },
+        { mimeType: 'video/mp4', extension: 'mp4', label: 'MP4' },
+        { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm', label: 'WEBM' },
+        { mimeType: 'video/webm', extension: 'webm', label: 'WEBM' }
+      ];
+      return types.find(type => MediaRecorder.isTypeSupported(type.mimeType)) || null;
     }
 
-    function getRecorderMimeType() {
-      const types = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm;codecs=vp9',
-        'video/webm'
-      ];
-      return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    function isRecorderSupported() {
+      return Boolean(recordCanvas.captureStream && getRecorderMimeInfo());
+    }
+
+    async function ensureAudioRouting() {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor || !audioPlayer.src) return null;
+
+      if (!audioContext) audioContext = new AudioContextCtor();
+      if (!audioSourceNode) {
+        audioSourceNode = audioContext.createMediaElementSource(audioPlayer);
+        audioRecordDestination = audioContext.createMediaStreamDestination();
+        audioSourceNode.connect(audioContext.destination);
+        audioSourceNode.connect(audioRecordDestination);
+      }
+
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
+      audioPlayer.muted = false;
+      audioPlayer.volume = 1;
+      return audioRecordDestination ? audioRecordDestination.stream : null;
     }
 
     function updateAudioButtons() {
@@ -1741,6 +1942,7 @@
       if (!audioPlayer.src || recordingActive || recordingStarting) return;
 
       try {
+        await ensureAudioRouting();
         if (audioPlayer.paused) {
           await audioPlayer.play();
         } else {
@@ -1758,6 +1960,7 @@
 
       const wasMuted = audioPlayer.muted;
       try {
+        await ensureAudioRouting();
         audioPlayer.muted = true;
         await audioPlayer.play();
         audioPlayer.pause();
@@ -1829,7 +2032,9 @@
       }
     }
 
-    function getAudioCaptureStream() {
+    async function getAudioCaptureStream() {
+      const routedStream = await ensureAudioRouting();
+      if (routedStream && routedStream.getAudioTracks().length) return routedStream;
       if (typeof audioPlayer.captureStream === 'function') return audioPlayer.captureStream();
       if (typeof audioPlayer.mozCaptureStream === 'function') return audioPlayer.mozCaptureStream();
       return null;
@@ -1842,10 +2047,9 @@
       audioPlayer.pause();
       setAudioStatus(audioPlayer.src ? 'VIDEO LISTO' : 'SIN AUDIO');
 
-      if (recordingStream) {
-        recordingStream.getTracks().forEach(track => track.stop());
-        recordingStream = null;
-      }
+      recordingOwnedTracks.forEach(track => track.stop());
+      recordingOwnedTracks = [];
+      recordingStream = null;
 
       if (!recordingChunks.length) {
         showToast('GRABACION VACIA');
@@ -1855,38 +2059,45 @@
 
       if (recordedObjectUrl) URL.revokeObjectURL(recordedObjectUrl);
 
-      const mimeType = mediaRecorder && mediaRecorder.mimeType ? mediaRecorder.mimeType : 'video/webm';
+      const mimeType = mediaRecorder && mediaRecorder.mimeType ? mediaRecorder.mimeType : 'video/mp4';
       const blob = new Blob(recordingChunks, { type: mimeType });
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       recordedObjectUrl = URL.createObjectURL(blob);
 
       downloadVideoLink.href = recordedObjectUrl;
-      downloadVideoLink.download = 'aladin_show_2400x1200_' + stamp + '.webm';
+      downloadVideoLink.download = 'aladin_show_2400x1200_' + stamp + '.' + currentRecordingExtension;
       downloadVideoLink.hidden = false;
       downloadVideoLink.click();
 
       mediaRecorder = null;
       recordingChunks = [];
       updateAudioButtons();
-      showToast('VIDEO LISTO 2400X1200');
+      showToast('VIDEO ' + currentRecordingLabel + ' LISTO 2400X1200');
     }
 
     async function startRecording() {
       if (!audioPlayer.src || recordingActive) return;
 
-      const mimeType = getRecorderMimeType();
-      if (!isRecorderSupported() || !mimeType) {
+      const recorderInfo = getRecorderMimeInfo();
+      if (!recordCanvas.captureStream || !recorderInfo) {
         showToast('GRABACION NO SOPORTADA');
         return;
       }
+      currentRecordingExtension = recorderInfo.extension;
+      currentRecordingLabel = recorderInfo.label;
 
       audioPlayer.pause();
       audioPlayer.currentTime = 0;
+      audioPlayer.muted = false;
+      audioPlayer.volume = 1;
+      await ensureAudioRouting();
       await drawStageToRecordCanvas();
 
       const canvasStream = recordCanvas.captureStream(RECORDING.fps);
-      const audioStream = getAudioCaptureStream();
-      const tracks = [...canvasStream.getVideoTracks()];
+      const audioStream = await getAudioCaptureStream();
+      const videoTracks = [...canvasStream.getVideoTracks()];
+      const tracks = [...videoTracks];
+      recordingOwnedTracks = [...videoTracks];
 
       if (audioStream) {
         tracks.push(...audioStream.getAudioTracks());
@@ -1896,7 +2107,7 @@
 
       recordingStream = new MediaStream(tracks);
       recordingChunks = [];
-      mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
+      mediaRecorder = new MediaRecorder(recordingStream, { mimeType: recorderInfo.mimeType });
       mediaRecorder.ondataavailable = event => {
         if (event.data && event.data.size) recordingChunks.push(event.data);
       };
@@ -1915,7 +2126,7 @@
 
       try {
         await audioPlayer.play();
-        showToast('GRABANDO 2400X1200');
+        showToast('GRABANDO ' + currentRecordingLabel + ' 2400X1200');
       } catch (error) {
         showToast('NO PUDE ARRANCAR AUDIO');
         stopRecording();
@@ -1999,6 +2210,13 @@
       event.target.value = '';
     });
 
+    textureInput.addEventListener('change', event => {
+      loadTextureFile(event.target.files[0]);
+      event.target.value = '';
+    });
+
+    clearTextureBtn.addEventListener('click', clearTexture);
+
     audioInput.addEventListener('change', event => {
       setAudioFile(event.target.files[0]);
       event.target.value = '';
@@ -2021,6 +2239,7 @@
     setupStage();
     renderLegends();
     renderPalette();
+    updateTextureUi();
     updateDecayLabel();
     updateAudioButtons();
 
