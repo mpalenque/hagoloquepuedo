@@ -2030,7 +2030,13 @@
     function drawRecordingFill(ctx, id, x, y, width, height, opacity = 1) {
       if (width <= 0 || height <= 0 || opacity <= 0) return;
 
+      const screen = SCREEN_BY_ID[id];
+      if (!screen) return;
+
       ctx.save();
+      ctx.beginPath();
+      ctx.rect(screen.x, screen.y, screen.width, screen.height);
+      ctx.clip();
       ctx.globalAlpha = clamp(opacity, 0, 1);
       if (!drawTextureCover(ctx, x, y, width, height)) {
         ctx.fillStyle = colorFor(id);
