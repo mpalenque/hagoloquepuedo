@@ -1,0 +1,2035 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aladin - Show de Pantallas</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+      color: #fff;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stage-wrap {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-bottom: 144px;
+      background: #000;
+    }
+
+    svg#stage {
+      display: block;
+      width: 100%;
+      max-width: 100vw;
+      height: auto;
+      max-height: calc(100vh - 144px);
+      background: #000;
+    }
+
+    #controlBar {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      min-height: 144px;
+      background: #000;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: grid;
+      grid-template-rows: auto auto auto;
+      align-content: center;
+      gap: 10px;
+      padding: 12px 16px 14px;
+    }
+
+    .control-row,
+    #keyLegend,
+    #modeLegend,
+    #paletteSwatches {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #recordControls {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 5;
+      width: min(520px, calc(100vw - 36px));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.94);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    }
+
+    #recordControls::before {
+      content: "AUDIO + GRABAR VIDEO";
+      width: 100%;
+      padding-left: 2px;
+      color: rgba(255, 255, 255, 0.64);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .decay-control {
+      height: 25px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 4px;
+      padding: 0 9px;
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .decay-control input {
+      width: 118px;
+      accent-color: var(--mode-color, #fff);
+      cursor: pointer;
+    }
+
+    .decay-control output {
+      min-width: 34px;
+      color: #fff;
+      text-align: right;
+    }
+
+    #imageInput,
+    #audioInput {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .upload-label,
+    .action-btn,
+    .download-link,
+    .hint {
+      height: 25px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.66);
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      text-transform: uppercase;
+      user-select: none;
+      transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .upload-label,
+    .action-btn,
+    .download-link {
+      min-width: 58px;
+      padding: 0 10px;
+      appearance: none;
+      font-family: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .download-link[hidden] {
+      display: none;
+    }
+
+    .action-btn.recording {
+      border-color: transparent;
+      background: #ff2d45;
+      color: #000;
+    }
+
+    .hint {
+      min-width: 44px;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+
+    .hint .k {
+      color: #fff;
+      font-size: 0.72rem;
+    }
+
+    .hint .label {
+      color: rgba(255, 255, 255, 0.42);
+      font-size: 0.56rem;
+    }
+
+    #audioStatus {
+      cursor: default;
+    }
+
+    .hint.lit,
+    .upload-label:hover,
+    .action-btn:hover,
+    .download-link:hover {
+      border-color: rgba(255, 255, 255, 0.72);
+      background: rgba(255, 255, 255, 0.11);
+      color: #fff;
+    }
+
+    .mode-hint {
+      min-width: 36px;
+    }
+
+    .mode-hint.active {
+      color: #000;
+      border-color: transparent;
+      background: var(--mode-color, #fff);
+    }
+
+    .mode-hint.active .k,
+    .mode-hint.active .label {
+      color: #000;
+    }
+
+    .swatch {
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 4px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+    }
+
+    #toast {
+      position: fixed;
+      top: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: min(720px, calc(100vw - 28px));
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      line-height: 1.4;
+      text-align: center;
+      text-transform: uppercase;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 220ms ease;
+    }
+
+    #countdownOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      display: grid;
+      place-items: center;
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      font-size: clamp(7rem, 24vw, 18rem);
+      font-weight: 800;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #countdownOverlay[hidden] {
+      display: none;
+    }
+
+    #recordCanvas {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @media (max-width: 720px) {
+      .stage-wrap {
+        padding-bottom: 206px;
+      }
+
+      svg#stage {
+        max-height: calc(100vh - 206px);
+      }
+
+      #controlBar {
+        min-height: 206px;
+        padding-inline: 10px;
+      }
+
+      .hint .label {
+        display: none;
+      }
+
+      .decay-control {
+        width: min(320px, calc(100vw - 20px));
+        justify-content: center;
+      }
+
+      .decay-control input {
+        width: 150px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-wrap">
+    <svg id="stage" viewBox="0 0 4800 1200" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">
+      <defs id="stageDefs"></defs>
+      <rect width="4800" height="1200" fill="#000000"/>
+      <g id="screenBase"></g>
+      <g id="effects"></g>
+    </svg>
+  </div>
+
+  <div id="recordControls">
+    <label class="upload-label" for="audioInput">CARGAR AUDIO</label>
+    <input id="audioInput" type="file" accept="audio/*">
+    <button id="audioPlayBtn" class="action-btn" type="button" disabled>PLAY</button>
+    <button id="recordBtn" class="action-btn" type="button" disabled>REC VIDEO 3-2-1</button>
+    <button id="stopRecordBtn" class="action-btn recording" type="button" disabled>STOP REC</button>
+    <a id="downloadVideoLink" class="download-link" href="#" download="aladin_show_2400x1200.webm" hidden>BAJAR VIDEO</a>
+    <span id="audioStatus" class="hint"><span class="label">SIN AUDIO</span></span>
+  </div>
+
+  <div id="controlBar">
+    <div class="control-row">
+      <label class="upload-label" for="imageInput">IMG</label>
+      <input id="imageInput" type="file" accept="image/*">
+      <div id="paletteSwatches" aria-label="Paleta elegida"></div>
+      <label class="decay-control" style="--mode-color:#ff8a22">
+        <span>DECAY</span>
+        <input id="decaySlider" type="range" min="0.01" max="3" step="0.01" value="1.14">
+        <output id="decayValue" for="decaySlider">1.14s</output>
+      </label>
+      <div id="modeLegend"></div>
+    </div>
+    <div id="keyLegend"></div>
+  </div>
+
+  <div id="toast">1-9 pantallas | 0 todo | QWERTY UIOP ASDFGHJKL modos | ESC apaga</div>
+  <div id="countdownOverlay" hidden>3</div>
+  <canvas id="recordCanvas" width="2400" height="1200"></canvas>
+  <audio id="audioPlayer" preload="metadata"></audio>
+
+  <script>
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const STAGE = { width: 4800, height: 1200 };
+    const RECORDING = { width: 2400, height: 1200, fps: 30 };
+
+    const SCREENS = [
+      { id: 'izq-b', x: 0, y: 800, width: 300, height: 400, colorIndex: 0 },
+      { id: 'izq-a', x: 300, y: 800, width: 300, height: 400, colorIndex: 0 },
+      { id: 'p1-izq', x: 600, y: 200, width: 300, height: 1000, colorIndex: 1 },
+      { id: 'p2-izq', x: 900, y: 200, width: 300, height: 1000, colorIndex: 2 },
+      { id: 'fondo', x: 1200, y: 200, width: 2400, height: 1000, colorIndex: 3 },
+      { id: 'p2-der', x: 3600, y: 200, width: 300, height: 1000, colorIndex: 2 },
+      { id: 'p1-der', x: 3900, y: 200, width: 300, height: 1000, colorIndex: 1 },
+      { id: 'der-a', x: 4200, y: 800, width: 300, height: 400, colorIndex: 5 },
+      { id: 'der-b', x: 4500, y: 800, width: 300, height: 400, colorIndex: 5 },
+      { id: 'rompimiento', x: 1000, y: 0, width: 2800, height: 200, colorIndex: 4 }
+    ];
+
+    const SCREEN_BY_ID = Object.fromEntries(SCREENS.map(screen => [screen.id, screen]));
+    const ALL_IDS = SCREENS.map(screen => screen.id);
+
+    const KEYMAP = [
+      { key: '1', ids: ['izq-a', 'izq-b'], label: 'IZQ A+B' },
+      { key: '2', ids: ['p1-izq'], label: 'P1 IZQ' },
+      { key: '3', ids: ['p2-izq'], label: 'P2 IZQ' },
+      { key: '4', ids: ['fondo'], label: 'FONDO' },
+      { key: '5', ids: ['rompimiento'], label: 'ROMPIMIENTO' },
+      { key: '6', ids: ['p2-der'], label: 'P2 DER' },
+      { key: '7', ids: ['p1-der'], label: 'P1 DER' },
+      { key: '8', ids: ['der-a', 'der-b'], label: 'DER A+B' },
+      { key: '9', ids: ALL_IDS, label: 'TODAS' }
+    ];
+
+    const MODES = {
+      q: { id: 'flash', key: 'Q', label: 'FLASH' },
+      w: { id: 'down', key: 'W', label: 'ARRIBA ABAJO' },
+      e: { id: 'up', key: 'E', label: 'ABAJO ARRIBA' },
+      r: { id: 'right', key: 'R', label: 'IZQ DER' },
+      t: { id: 'left', key: 'T', label: 'DER IZQ' },
+      y: { id: 'circle', key: 'Y', label: 'CIRCULOS' },
+      u: { id: 'pulse', key: 'U', label: 'DOBLE' },
+      i: { id: 'iris', key: 'I', label: 'IRIS' },
+      o: { id: 'ring', key: 'O', label: 'ANILLO' },
+      p: { id: 'shutter', key: 'P', label: 'PERSIANA' },
+      a: { id: 'outline', key: 'A', label: 'CONTORNO', autoFire: true },
+      s: { id: 'scanner', key: 'S', label: 'SCAN', autoFire: true },
+      d: { id: 'diagonal', key: 'D', label: 'DIAG', autoFire: true },
+      f: { id: 'doors', key: 'F', label: 'PUERTAS', autoFire: true },
+      g: { id: 'diagonalFan', key: 'G', label: 'FAN DIAG', autoFire: true },
+      h: { id: 'scanlines', key: 'H', label: 'LINEAS', autoFire: true },
+      j: { id: 'mosaic', key: 'J', label: 'MOSAICO', autoFire: true },
+      k: { id: 'diagonalRain', key: 'K', label: 'LLUVIA', autoFire: true },
+      l: { id: 'ribbon', key: 'L', label: 'CINTA', autoFire: true },
+      z: { id: 'blob', key: 'Z', label: 'BLOB', autoFire: true },
+      x: { id: 'ripples', key: 'X', label: 'ONDAS', autoFire: true },
+      c: { id: 'liquid', key: 'C', label: 'LIQUIDO', autoFire: true },
+      v: { id: 'spiral', key: 'V', label: 'ESPIRAL', autoFire: true },
+      b: { id: 'bubbles', key: 'B', label: 'BURBUJAS', autoFire: true },
+      n: { id: 'nebula', key: 'N', label: 'NEBULA', autoFire: true },
+      m: { id: 'melt', key: 'M', label: 'MELT', autoFire: true }
+    };
+
+    const DEFAULT_PALETTE = ['#ff8a22', '#22f0b5', '#376dff', '#ff2d45', '#ffe04f', '#ff3ea8'];
+    const DURATIONS = {
+      wipe: 960,
+      circle: 1060,
+      pulse: 1180,
+      iris: 1050,
+      ring: 1120,
+      shutter: 1080,
+      outline: 1750,
+      scanner: 1450,
+      diagonal: 1450,
+      doors: 1400,
+      diagonalFan: 1450,
+      scanlines: 1400,
+      mosaic: 1550,
+      diagonalRain: 1450,
+      ribbon: 1400,
+      blob: 1500,
+      ripples: 1600,
+      liquid: 1500,
+      spiral: 1650,
+      bubbles: 1650,
+      nebula: 1700,
+      melt: 1550,
+      globalSweep: 1450
+    };
+
+    const stage = document.getElementById('stage');
+    const defs = document.getElementById('stageDefs');
+    const screenBase = document.getElementById('screenBase');
+    const effects = document.getElementById('effects');
+    const keyLegend = document.getElementById('keyLegend');
+    const modeLegend = document.getElementById('modeLegend');
+    const paletteSwatches = document.getElementById('paletteSwatches');
+    const imageInput = document.getElementById('imageInput');
+    const audioInput = document.getElementById('audioInput');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const audioPlayBtn = document.getElementById('audioPlayBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+    const downloadVideoLink = document.getElementById('downloadVideoLink');
+    const audioStatus = document.getElementById('audioStatus');
+    const countdownOverlay = document.getElementById('countdownOverlay');
+    const recordCanvas = document.getElementById('recordCanvas');
+    const decaySlider = document.getElementById('decaySlider');
+    const decayValue = document.getElementById('decayValue');
+    const toast = document.getElementById('toast');
+
+    let currentPalette = [...DEFAULT_PALETTE];
+    let activeMode = 'flash';
+    let audioObjectUrl = '';
+    let recordedObjectUrl = '';
+    let mediaRecorder = null;
+    let recordingStream = null;
+    let recordingChunks = [];
+    let recordingActive = false;
+    let renderRecordingFrame = false;
+    let renderRecordingRaf = 0;
+    let recordingStarting = false;
+    let toastTimer = null;
+    const activeRafs = new Set();
+    const activeTimers = new Set();
+
+    function svgEl(tag, attrs = {}) {
+      const el = document.createElementNS(SVG_NS, tag);
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+      return el;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function getFlashDecayMs() {
+      return clamp(Number(decaySlider.value) || 1.14, 0.01, 3) * 1000;
+    }
+
+    function updateDecayLabel() {
+      const seconds = clamp(Number(decaySlider.value) || 1.14, 0.01, 3);
+      decayValue.textContent = seconds.toFixed(2) + 's';
+    }
+
+    function colorFor(id) {
+      const screen = SCREEN_BY_ID[id];
+      return currentPalette[(screen ? screen.colorIndex : 0) % currentPalette.length];
+    }
+
+    function setupStage() {
+      SCREENS.forEach(screen => {
+        const clip = svgEl('clipPath', {
+          id: 'clip-' + screen.id,
+          clipPathUnits: 'userSpaceOnUse'
+        });
+        clip.appendChild(svgEl('rect', {
+          x: screen.x,
+          y: screen.y,
+          width: screen.width,
+          height: screen.height
+        }));
+        defs.appendChild(clip);
+
+        screenBase.appendChild(svgEl('rect', {
+          x: screen.x,
+          y: screen.y,
+          width: screen.width,
+          height: screen.height,
+          fill: '#000000',
+          stroke: '#000000',
+          'stroke-width': 0
+        }));
+      });
+
+      const allClip = svgEl('clipPath', { id: 'clip-all', clipPathUnits: 'userSpaceOnUse' });
+      SCREENS.forEach(screen => {
+        allClip.appendChild(svgEl('rect', {
+          x: screen.x,
+          y: screen.y,
+          width: screen.width,
+          height: screen.height
+        }));
+      });
+      defs.appendChild(allClip);
+    }
+
+    function animate(duration, update, done) {
+      const start = performance.now();
+      let raf = 0;
+
+      function frame(now) {
+        activeRafs.delete(raf);
+        const t = clamp((now - start) / duration, 0, 1);
+        update(t);
+        if (t < 1) {
+          raf = requestAnimationFrame(frame);
+          activeRafs.add(raf);
+        } else {
+          activeRafs.delete(raf);
+          if (done) done();
+        }
+      }
+
+      raf = requestAnimationFrame(frame);
+      activeRafs.add(raf);
+      return raf;
+    }
+
+    function removeNode(node) {
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+    }
+
+    function addEffectGroup(clipId) {
+      const group = svgEl('g', { 'clip-path': 'url(#' + clipId + ')' });
+      effects.appendChild(group);
+      return group;
+    }
+
+    function addImpactFill(group, box, color, opacity = 0.66) {
+      const rect = svgEl('rect', {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        fill: color,
+        opacity
+      });
+      group.appendChild(rect);
+      return rect;
+    }
+
+    function updateImpactFill(rect, t, startOpacity = 0.66) {
+      const opacity = startOpacity * Math.max(0, 1 - easeOutCubic(Math.min(t / 0.92, 1)));
+      rect.setAttribute('opacity', opacity.toFixed(3));
+    }
+
+    function triggerFlash(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const colorRect = svgEl('rect', {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        fill: colorFor(id),
+        opacity: 1
+      });
+
+      group.appendChild(colorRect);
+
+      animate(getFlashDecayMs(), t => {
+        colorRect.setAttribute('opacity', (1 - easeOutCubic(t)).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerWipe(id, direction) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const rect = svgEl('rect', { fill: colorFor(id), opacity: 1 });
+      group.appendChild(rect);
+
+      animate(DURATIONS.wipe, t => {
+        const reveal = easeInOutCubic(Math.min(t / 0.62, 1));
+        const fade = t < 0.62 ? 1 : 1 - ((t - 0.62) / 0.38);
+
+        let x = box.x;
+        let y = box.y;
+        let width = box.width;
+        let height = box.height;
+
+        if (direction === 'down') {
+          height = box.height * reveal;
+        } else if (direction === 'up') {
+          height = box.height * reveal;
+          y = box.y + box.height - height;
+        } else if (direction === 'right') {
+          width = box.width * reveal;
+        } else if (direction === 'left') {
+          width = box.width * reveal;
+          x = box.x + box.width - width;
+        }
+
+        rect.setAttribute('x', x.toFixed(2));
+        rect.setAttribute('y', y.toFixed(2));
+        rect.setAttribute('width', Math.max(0.01, width).toFixed(2));
+        rect.setAttribute('height', Math.max(0.01, height).toFixed(2));
+        rect.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerCircle(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      const radius = Math.hypot(box.width / 2, box.height / 2);
+      const circle = svgEl('circle', {
+        cx,
+        cy,
+        r: 0,
+        fill: colorFor(id),
+        opacity: 1
+      });
+      group.appendChild(circle);
+
+      animate(DURATIONS.circle, t => {
+        const grow = easeOutCubic(Math.min(t / 0.72, 1));
+        const fade = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        circle.setAttribute('r', (radius * grow).toFixed(2));
+        circle.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerCenterCircle() {
+      const group = addEffectGroup('clip-all');
+      const circle = svgEl('circle', {
+        cx: STAGE.width / 2,
+        cy: STAGE.height / 2,
+        r: 0,
+        fill: currentPalette[3 % currentPalette.length],
+        opacity: 1
+      });
+      group.appendChild(circle);
+
+      const radius = Math.hypot(STAGE.width / 2, STAGE.height / 2);
+      animate(DURATIONS.globalSweep, t => {
+        const grow = easeOutCubic(Math.min(t / 0.76, 1));
+        const fade = t < 0.76 ? 1 : 1 - ((t - 0.76) / 0.24);
+        circle.setAttribute('r', (radius * grow).toFixed(2));
+        circle.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerPulse(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const rect = svgEl('rect', {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        fill: colorFor(id),
+        opacity: 0
+      });
+      group.appendChild(rect);
+
+      animate(DURATIONS.pulse, t => {
+        const first = Math.max(0, 1 - Math.abs(t - 0.06) / 0.1);
+        const second = Math.max(0, 0.92 - Math.abs(t - 0.24) / 0.2);
+        const tail = t > 0.18 ? Math.max(0, 1 - ((t - 0.18) / 0.82)) * 0.42 : 0;
+        const opacity = Math.min(1, Math.max(first, second, tail));
+        rect.setAttribute('opacity', opacity.toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerIris(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const rect = svgEl('rect', {
+        x: box.x + box.width / 2,
+        y: box.y,
+        width: 0.01,
+        height: box.height,
+        fill: colorFor(id),
+        opacity: 1
+      });
+      group.appendChild(rect);
+
+      animate(DURATIONS.iris, t => {
+        const open = easeInOutCubic(Math.min(t / 0.58, 1));
+        const fade = t < 0.62 ? 1 : 1 - ((t - 0.62) / 0.38);
+        const width = box.width * open;
+        rect.setAttribute('x', (box.x + (box.width - width) / 2).toFixed(2));
+        rect.setAttribute('width', Math.max(0.01, width).toFixed(2));
+        rect.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerRing(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const strokeWidth = Math.max(8, Math.min(box.width, box.height) * 0.08);
+      const ring = svgEl('rect', {
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        width: 0.01,
+        height: 0.01,
+        fill: 'none',
+        stroke: colorFor(id),
+        'stroke-width': strokeWidth,
+        opacity: 1
+      });
+      group.appendChild(ring);
+
+      animate(DURATIONS.ring, t => {
+        const grow = easeOutCubic(Math.min(t / 0.72, 1));
+        const fade = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        const width = box.width * grow;
+        const height = box.height * grow;
+        ring.setAttribute('x', (box.x + (box.width - width) / 2).toFixed(2));
+        ring.setAttribute('y', (box.y + (box.height - height) / 2).toFixed(2));
+        ring.setAttribute('width', Math.max(0.01, width).toFixed(2));
+        ring.setAttribute('height', Math.max(0.01, height).toFixed(2));
+        ring.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerShutter(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const barCount = box.width > 700 ? 18 : 6;
+      const gapRatio = 0.18;
+      const slot = box.width / barCount;
+      const bars = [];
+      const fromLeft = box.x + box.width / 2 < STAGE.width / 2;
+
+      for (let i = 0; i < barCount; i += 1) {
+        const rect = svgEl('rect', {
+          x: box.x + slot * i + slot * gapRatio / 2,
+          y: box.y,
+          width: slot * (1 - gapRatio),
+          height: box.height,
+          fill: colorFor(id),
+          opacity: 0
+        });
+        group.appendChild(rect);
+        bars.push(rect);
+      }
+
+      animate(DURATIONS.shutter, t => {
+        const fade = t < 0.7 ? 1 : 1 - ((t - 0.7) / 0.3);
+        bars.forEach((rect, index) => {
+          let order = index;
+          if (!fromLeft) order = barCount - 1 - index;
+
+          const local = clamp((t - order * 0.035) / 0.24, 0, 1);
+          const eased = easeOutCubic(local);
+          rect.setAttribute('height', (box.height * eased).toFixed(2));
+          rect.setAttribute('y', (box.y + (box.height - box.height * eased) / 2).toFixed(2));
+          rect.setAttribute('opacity', (Math.max(0, fade) * eased).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerOutline(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.68);
+      const strokeWidth = Math.max(16, Math.min(box.width, box.height) * 0.08);
+      const length = 2 * (box.width + box.height);
+      const path = svgEl('path', {
+        d: [
+          'M', box.x + strokeWidth / 2, box.y + strokeWidth / 2,
+          'H', box.x + box.width - strokeWidth / 2,
+          'V', box.y + box.height - strokeWidth / 2,
+          'H', box.x + strokeWidth / 2,
+          'Z'
+        ].join(' '),
+        fill: 'none',
+        stroke: color,
+        'stroke-width': strokeWidth,
+        'stroke-linecap': 'square',
+        'stroke-linejoin': 'miter',
+        'stroke-dasharray': length,
+        'stroke-dashoffset': length,
+        opacity: 1
+      });
+      group.appendChild(path);
+
+      animate(DURATIONS.outline, t => {
+        const draw = easeInOutCubic(Math.min(t / 0.7, 1));
+        const fade = t < 0.74 ? 1 : 1 - ((t - 0.74) / 0.26);
+        updateImpactFill(impact, t, 0.68);
+        path.setAttribute('stroke-dashoffset', (length * (1 - draw)).toFixed(2));
+        path.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerScanner(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.64);
+      const stripeHeight = Math.max(28, box.height * 0.16);
+      const stripe = svgEl('rect', {
+        x: box.x,
+        y: box.y - stripeHeight,
+        width: box.width,
+        height: stripeHeight,
+        fill: color,
+        opacity: 1
+      });
+      group.appendChild(stripe);
+
+      animate(DURATIONS.scanner, t => {
+        const move = easeInOutCubic(Math.min(t / 0.75, 1));
+        const fade = t < 0.75 ? 1 : 1 - ((t - 0.75) / 0.25);
+        updateImpactFill(impact, t, 0.64);
+        stripe.setAttribute('y', (box.y - stripeHeight + (box.height + stripeHeight * 2) * move).toFixed(2));
+        stripe.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerDiagonal(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.64);
+      const band = box.width * 0.34 + box.height * 0.28;
+      const slash = svgEl('polygon', { fill: color, opacity: 1 });
+      group.appendChild(slash);
+
+      animate(DURATIONS.diagonal, t => {
+        const move = easeInOutCubic(Math.min(t / 0.72, 1));
+        const fade = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        updateImpactFill(impact, t, 0.64);
+        const x = box.x - band + (box.width + band * 2) * move;
+        const points = [
+          [x - band * 0.38, box.y],
+          [x + band * 0.38, box.y],
+          [x + band, box.y + box.height],
+          [x + band * 0.24, box.y + box.height]
+        ].map(point => point.map(value => value.toFixed(2)).join(',')).join(' ');
+        slash.setAttribute('points', points);
+        slash.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerDoors(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.66);
+      const left = svgEl('rect', { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, fill: color, opacity: 1 });
+      const right = svgEl('rect', { x: box.x + box.width / 2, y: box.y, width: 0.01, height: box.height, fill: color, opacity: 1 });
+      group.append(left, right);
+
+      animate(DURATIONS.doors, t => {
+        const open = easeInOutCubic(Math.min(t / 0.62, 1));
+        const fade = t < 0.66 ? 1 : 1 - ((t - 0.66) / 0.34);
+        const width = box.width * open / 2;
+        updateImpactFill(impact, t, 0.66);
+        left.setAttribute('x', (box.x + box.width / 2 - width).toFixed(2));
+        left.setAttribute('width', Math.max(0.01, width).toFixed(2));
+        right.setAttribute('width', Math.max(0.01, width).toFixed(2));
+        left.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+        right.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerDiagonalFan(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const lineCount = box.width > 700 ? 8 : 4;
+      const span = box.width + box.height;
+      const lines = [];
+
+      for (let i = 0; i < lineCount; i += 1) {
+        const offset = (i / Math.max(1, lineCount - 1)) * (box.width + span * 0.4);
+        const line = svgEl('line', {
+          x1: box.x - span * 0.4 + offset,
+          y1: box.y + box.height + span * 0.24,
+          x2: box.x - span * 0.92 + offset,
+          y2: box.y - span * 0.28,
+          stroke: color,
+          'stroke-width': Math.max(14, Math.min(box.width, box.height) * 0.06),
+          'stroke-linecap': 'round',
+          opacity: 0
+        });
+        group.appendChild(line);
+        lines.push(line);
+      }
+
+      animate(DURATIONS.diagonalFan, t => {
+        const fade = t < 0.76 ? 1 : 1 - ((t - 0.76) / 0.24);
+        lines.forEach((line, index) => {
+          const offset = (index / Math.max(1, lineCount - 1)) * (box.width + span * 0.4);
+          const local = clamp((t - index * 0.045) / 0.42, 0, 1);
+          const move = easeInOutCubic(local) * (box.width * 0.7 + span * 0.24);
+          line.setAttribute('x1', (box.x - span * 0.4 + offset + move).toFixed(2));
+          line.setAttribute('x2', (box.x - span * 0.92 + offset + move).toFixed(2));
+          line.setAttribute('opacity', (0.96 * easeOutCubic(local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerScanlines(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.62);
+      const lineCount = Math.max(4, Math.min(14, Math.round(box.height / 80)));
+      const slot = box.height / lineCount;
+      const lines = [];
+
+      for (let i = 0; i < lineCount; i += 1) {
+        const rect = svgEl('rect', {
+          x: box.x,
+          y: box.y + slot * i + slot * 0.2,
+          width: box.width,
+          height: slot * 0.44,
+          fill: color,
+          opacity: 0
+        });
+        group.appendChild(rect);
+        lines.push(rect);
+      }
+
+      animate(DURATIONS.scanlines, t => {
+        const fade = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
+        updateImpactFill(impact, t, 0.62);
+        lines.forEach((line, index) => {
+          const order = Math.abs(index - (lineCount - 1) / 2);
+          const local = clamp((t - order * 0.045) / 0.28, 0, 1);
+          line.setAttribute('opacity', (easeOutCubic(local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerMosaic(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.62);
+      const cols = box.width > 700 ? 12 : 4;
+      const rows = box.height > 500 ? 5 : 3;
+      const cellWidth = box.width / cols;
+      const cellHeight = box.height / rows;
+      const cells = [];
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const rect = svgEl('rect', {
+            x: box.x + col * cellWidth,
+            y: box.y + row * cellHeight,
+            width: cellWidth + 0.5,
+            height: cellHeight + 0.5,
+            fill: color,
+            opacity: 0
+          });
+          group.appendChild(rect);
+          cells.push({ rect, row, col });
+        }
+      }
+
+      animate(DURATIONS.mosaic, t => {
+        const fade = t < 0.76 ? 1 : 1 - ((t - 0.76) / 0.24);
+        updateImpactFill(impact, t, 0.62);
+        cells.forEach(({ rect, row, col }) => {
+          const local = clamp((t - (row + col) * 0.028) / 0.22, 0, 1);
+          rect.setAttribute('opacity', (easeOutCubic(local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerDiagonalRain(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const lineCount = box.width > 700 ? 16 : 6;
+      const span = Math.hypot(box.width, box.height);
+      const lines = [];
+
+      for (let i = 0; i < lineCount; i += 1) {
+        const x = box.x + (i / Math.max(1, lineCount - 1)) * box.width;
+        const line = svgEl('line', {
+          x1: x + span * 0.35,
+          y1: box.y - span,
+          x2: x - span * 0.1,
+          y2: box.y - span * 0.35,
+          stroke: color,
+          'stroke-width': Math.max(8, Math.min(box.width, box.height) * 0.04),
+          'stroke-linecap': 'round',
+          opacity: 0
+        });
+        group.appendChild(line);
+        lines.push(line);
+      }
+
+      animate(DURATIONS.diagonalRain, t => {
+        const fade = t < 0.74 ? 1 : 1 - ((t - 0.74) / 0.26);
+        lines.forEach((line, index) => {
+          const local = clamp((t - index * 0.018) / 0.45, 0, 1);
+          const drop = easeInOutCubic(local) * (box.height + span * 1.2);
+          line.setAttribute('y1', (box.y - span + drop).toFixed(2));
+          line.setAttribute('y2', (box.y - span * 0.35 + drop).toFixed(2));
+          line.setAttribute('opacity', (0.94 * easeOutCubic(local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerRibbon(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const impact = addImpactFill(group, box, color, 0.64);
+      const ribbon = svgEl('rect', {
+        x: box.x,
+        y: box.y + box.height / 2,
+        width: box.width,
+        height: 0.01,
+        fill: color,
+        opacity: 1
+      });
+      group.appendChild(ribbon);
+
+      animate(DURATIONS.ribbon, t => {
+        const open = easeInOutCubic(Math.min(t / 0.62, 1));
+        const fade = t < 0.68 ? 1 : 1 - ((t - 0.68) / 0.32);
+        const height = box.height * open;
+        updateImpactFill(impact, t, 0.64);
+        ribbon.setAttribute('y', (box.y + (box.height - height) / 2).toFixed(2));
+        ribbon.setAttribute('height', Math.max(0.01, height).toFixed(2));
+        ribbon.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function blobPath(cx, cy, rx, ry, phase = 0) {
+      const p = [];
+      const points = 8;
+      for (let i = 0; i < points; i += 1) {
+        const a = (Math.PI * 2 * i) / points;
+        const wobble = 1 + Math.sin(phase + i * 1.7) * 0.16 + Math.cos(phase * 0.7 + i * 2.1) * 0.1;
+        p.push({
+          x: cx + Math.cos(a) * rx * wobble,
+          y: cy + Math.sin(a) * ry * wobble
+        });
+      }
+
+      let d = 'M ' + p[0].x.toFixed(2) + ' ' + p[0].y.toFixed(2);
+      for (let i = 0; i < points; i += 1) {
+        const current = p[i];
+        const next = p[(i + 1) % points];
+        const prev = p[(i - 1 + points) % points];
+        const nextNext = p[(i + 2) % points];
+        const c1 = {
+          x: current.x + (next.x - prev.x) * 0.18,
+          y: current.y + (next.y - prev.y) * 0.18
+        };
+        const c2 = {
+          x: next.x - (nextNext.x - current.x) * 0.18,
+          y: next.y - (nextNext.y - current.y) * 0.18
+        };
+        d += ' C ' + [c1.x, c1.y, c2.x, c2.y, next.x, next.y].map(v => v.toFixed(2)).join(' ');
+      }
+      return d + ' Z';
+    }
+
+    function triggerBlob(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const blob = svgEl('path', { fill: color, opacity: 1 });
+      group.appendChild(blob);
+
+      animate(DURATIONS.blob, t => {
+        const grow = easeOutCubic(Math.min(t / 0.72, 1));
+        const fade = t < 0.74 ? 1 : 1 - ((t - 0.74) / 0.26);
+        const rx = box.width * (0.12 + 0.58 * grow);
+        const ry = box.height * (0.12 + 0.58 * grow);
+        blob.setAttribute('d', blobPath(box.x + box.width / 2, box.y + box.height / 2, rx, ry, t * 7));
+        blob.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerRipples(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const rings = [];
+      for (let i = 0; i < 4; i += 1) {
+        const ring = svgEl('ellipse', {
+          cx: box.x + box.width / 2,
+          cy: box.y + box.height / 2,
+          rx: 0.01,
+          ry: 0.01,
+          fill: 'none',
+          stroke: color,
+          'stroke-width': Math.max(8, Math.min(box.width, box.height) * 0.045),
+          opacity: 0
+        });
+        group.appendChild(ring);
+        rings.push(ring);
+      }
+
+      animate(DURATIONS.ripples, t => {
+        rings.forEach((ring, index) => {
+          const local = clamp((t - index * 0.13) / 0.65, 0, 1);
+          const grow = easeOutCubic(local);
+          const opacity = Math.sin(Math.PI * local) * (1 - Math.max(0, t - 0.76) / 0.24);
+          ring.setAttribute('rx', (box.width * 0.66 * grow).toFixed(2));
+          ring.setAttribute('ry', (box.height * 0.66 * grow).toFixed(2));
+          ring.setAttribute('opacity', Math.max(0, opacity).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerLiquid(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const wave = svgEl('path', { fill: color, opacity: 1 });
+      group.appendChild(wave);
+
+      animate(DURATIONS.liquid, t => {
+        const level = box.y + box.height - (box.height * 1.18 * easeInOutCubic(Math.min(t / 0.78, 1)));
+        const amp = Math.max(18, box.height * 0.08);
+        const fade = t < 0.78 ? 1 : 1 - ((t - 0.78) / 0.22);
+        const x0 = box.x;
+        const x1 = box.x + box.width * 0.33;
+        const x2 = box.x + box.width * 0.66;
+        const x3 = box.x + box.width;
+        const y0 = level + Math.sin(t * 8) * amp;
+        const y1 = level - amp;
+        const y2 = level + amp;
+        const d = [
+          'M', x0, box.y + box.height,
+          'L', x0, y0.toFixed(2),
+          'C', x1.toFixed(2), y1.toFixed(2), x2.toFixed(2), y2.toFixed(2), x3.toFixed(2), level.toFixed(2),
+          'L', x3, box.y + box.height,
+          'Z'
+        ].join(' ');
+        wave.setAttribute('d', d);
+        wave.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerSpiral(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const path = svgEl('path', {
+        fill: 'none',
+        stroke: color,
+        'stroke-width': Math.max(10, Math.min(box.width, box.height) * 0.05),
+        'stroke-linecap': 'round',
+        opacity: 1
+      });
+      group.appendChild(path);
+
+      animate(DURATIONS.spiral, t => {
+        const maxR = Math.hypot(box.width, box.height) * 0.52;
+        const turns = 2.4;
+        const points = [];
+        for (let i = 0; i < 34; i += 1) {
+          const f = i / 33;
+          const a = f * Math.PI * 2 * turns + t * 4;
+          const r = maxR * f * easeOutCubic(Math.min(t / 0.7, 1));
+          points.push([
+            box.x + box.width / 2 + Math.cos(a) * r,
+            box.y + box.height / 2 + Math.sin(a) * r * 0.65
+          ]);
+        }
+        const d = 'M ' + points.map(p => p.map(v => v.toFixed(2)).join(' ')).join(' L ');
+        const fade = t < 0.78 ? 1 : 1 - ((t - 0.78) / 0.22);
+        path.setAttribute('d', d);
+        path.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerBubbles(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const circles = [];
+      const count = box.width > 700 ? 16 : 7;
+      for (let i = 0; i < count; i += 1) {
+        const cx = box.x + ((i * 37) % 100) / 100 * box.width;
+        const circle = svgEl('circle', {
+          cx,
+          cy: box.y + box.height + 20,
+          r: 0.01,
+          fill: color,
+          opacity: 0
+        });
+        group.appendChild(circle);
+        circles.push(circle);
+      }
+
+      animate(DURATIONS.bubbles, t => {
+        const fade = t < 0.78 ? 1 : 1 - ((t - 0.78) / 0.22);
+        circles.forEach((circle, index) => {
+          const local = clamp((t - index * 0.035) / 0.7, 0, 1);
+          const rise = easeOutCubic(local);
+          const radius = Math.max(10, Math.min(box.width, box.height) * (0.08 + (index % 4) * 0.025)) * Math.sin(Math.PI * local);
+          const drift = Math.sin(index * 1.7 + t * 7) * box.width * 0.08;
+          circle.setAttribute('cy', (box.y + box.height - rise * box.height * 1.15).toFixed(2));
+          circle.setAttribute('cx', (box.x + ((index * 37) % 100) / 100 * box.width + drift).toFixed(2));
+          circle.setAttribute('r', Math.max(0.01, radius).toFixed(2));
+          circle.setAttribute('opacity', (Math.sin(Math.PI * local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerNebula(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const blobs = [];
+      for (let i = 0; i < 6; i += 1) {
+        const ellipse = svgEl('ellipse', {
+          cx: box.x + box.width * (0.18 + (i % 3) * 0.28),
+          cy: box.y + box.height * (0.2 + Math.floor(i / 3) * 0.46),
+          rx: 0.01,
+          ry: 0.01,
+          fill: color,
+          opacity: 0
+        });
+        group.appendChild(ellipse);
+        blobs.push(ellipse);
+      }
+
+      animate(DURATIONS.nebula, t => {
+        const fade = t < 0.76 ? 1 : 1 - ((t - 0.76) / 0.24);
+        blobs.forEach((ellipse, index) => {
+          const local = clamp((t - index * 0.05) / 0.64, 0, 1);
+          const grow = easeOutCubic(local);
+          ellipse.setAttribute('rx', (box.width * (0.12 + (index % 3) * 0.04) * grow).toFixed(2));
+          ellipse.setAttribute('ry', (box.height * (0.18 + (index % 2) * 0.05) * grow).toFixed(2));
+          ellipse.setAttribute('cx', (box.x + box.width * (0.18 + (index % 3) * 0.28) + Math.sin(t * 5 + index) * box.width * 0.04).toFixed(2));
+          ellipse.setAttribute('cy', (box.y + box.height * (0.2 + Math.floor(index / 3) * 0.46) + Math.cos(t * 4 + index) * box.height * 0.04).toFixed(2));
+          ellipse.setAttribute('opacity', (0.72 * Math.sin(Math.PI * local) * Math.max(0, fade)).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function triggerMelt(id) {
+      const box = SCREEN_BY_ID[id];
+      if (!box) return;
+
+      const group = addEffectGroup('clip-' + id);
+      const color = colorFor(id);
+      const melt = svgEl('path', { fill: color, opacity: 1 });
+      group.appendChild(melt);
+
+      animate(DURATIONS.melt, t => {
+        const drop = easeInOutCubic(Math.min(t / 0.76, 1));
+        const fade = t < 0.78 ? 1 : 1 - ((t - 0.78) / 0.22);
+        const amp = box.height * (0.16 + 0.12 * Math.sin(t * Math.PI));
+        const y = box.y + box.height * drop;
+        const x0 = box.x;
+        const x1 = box.x + box.width * 0.25;
+        const x2 = box.x + box.width * 0.5;
+        const x3 = box.x + box.width * 0.75;
+        const x4 = box.x + box.width;
+        const d = [
+          'M', x0, box.y,
+          'L', x4, box.y,
+          'L', x4, (y - amp * 0.2).toFixed(2),
+          'C', x3.toFixed(2), (y + amp).toFixed(2), x2.toFixed(2), (y - amp).toFixed(2), x1.toFixed(2), (y + amp * 0.55).toFixed(2),
+          'C', (box.x + box.width * 0.12).toFixed(2), (y + amp * 0.9).toFixed(2), x0, (y + amp * 0.2).toFixed(2), x0, y.toFixed(2),
+          'Z'
+        ].join(' ');
+        melt.setAttribute('d', d);
+        melt.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+      }, () => removeNode(group));
+    }
+
+    function triggerByMode(id, mode = activeMode) {
+      if (mode === 'flash') triggerFlash(id);
+      if (mode === 'down') triggerWipe(id, 'down');
+      if (mode === 'up') triggerWipe(id, 'up');
+      if (mode === 'right') triggerWipe(id, 'right');
+      if (mode === 'left') triggerWipe(id, 'left');
+      if (mode === 'circle') triggerCircle(id);
+      if (mode === 'pulse') triggerPulse(id);
+      if (mode === 'iris') triggerIris(id);
+      if (mode === 'ring') triggerRing(id);
+      if (mode === 'shutter') triggerShutter(id);
+      if (mode === 'outline') triggerOutline(id);
+      if (mode === 'scanner') triggerScanner(id);
+      if (mode === 'diagonal') triggerDiagonal(id);
+      if (mode === 'doors') triggerDoors(id);
+      if (mode === 'diagonalFan') triggerDiagonalFan(id);
+      if (mode === 'scanlines') triggerScanlines(id);
+      if (mode === 'mosaic') triggerMosaic(id);
+      if (mode === 'diagonalRain') triggerDiagonalRain(id);
+      if (mode === 'ribbon') triggerRibbon(id);
+      if (mode === 'blob') triggerBlob(id);
+      if (mode === 'ripples') triggerRipples(id);
+      if (mode === 'liquid') triggerLiquid(id);
+      if (mode === 'spiral') triggerSpiral(id);
+      if (mode === 'bubbles') triggerBubbles(id);
+      if (mode === 'nebula') triggerNebula(id);
+      if (mode === 'melt') triggerMelt(id);
+    }
+
+    function triggerIds(ids, stagger = 0, mode = activeMode) {
+      ids.forEach((id, index) => {
+        const delay = index * stagger;
+        if (delay <= 0) {
+          triggerByMode(id, mode);
+          return;
+        }
+        const timer = window.setTimeout(() => {
+          activeTimers.delete(timer);
+          triggerByMode(id, mode);
+        }, delay);
+        activeTimers.add(timer);
+      });
+    }
+
+    function triggerGlobalSweep(mode = activeMode) {
+      if (mode === 'circle') {
+        triggerCenterCircle();
+        return;
+      }
+
+      if ([
+        'flash', 'pulse', 'iris', 'ring', 'shutter', 'outline', 'scanner',
+        'diagonal', 'doors', 'diagonalFan', 'scanlines', 'mosaic', 'diagonalRain', 'ribbon',
+        'blob', 'ripples', 'liquid', 'spiral', 'bubbles', 'nebula', 'melt'
+      ].includes(mode)) {
+        const leftToRight = [...ALL_IDS].sort((a, b) => {
+          const screenA = SCREEN_BY_ID[a];
+          const screenB = SCREEN_BY_ID[b];
+          return (screenA.x + screenA.width / 2) - (screenB.x + screenB.width / 2);
+        });
+        triggerIds(leftToRight, mode === 'flash' ? 28 : 56, mode);
+        return;
+      }
+
+      const group = addEffectGroup('clip-all');
+      const rects = SCREENS.map(screen => {
+        const rect = svgEl('rect', {
+          x: screen.x,
+          y: screen.y,
+          width: 0.01,
+          height: screen.height,
+          fill: colorFor(screen.id),
+          opacity: 1
+        });
+        group.appendChild(rect);
+        return { screen, rect };
+      });
+
+      animate(DURATIONS.globalSweep, t => {
+        const reveal = easeInOutCubic(Math.min(t / 0.78, 1));
+        const boundary = STAGE.width * reveal;
+        const fade = t < 0.78 ? 1 : 1 - ((t - 0.78) / 0.22);
+
+        rects.forEach(({ screen, rect }) => {
+          const visibleWidth = clamp(boundary - screen.x, 0, screen.width);
+          rect.setAttribute('width', Math.max(0.01, visibleWidth).toFixed(2));
+          rect.setAttribute('opacity', Math.max(0, fade).toFixed(3));
+        });
+      }, () => removeNode(group));
+    }
+
+    function resetAll() {
+      activeRafs.forEach(raf => cancelAnimationFrame(raf));
+      activeRafs.clear();
+      activeTimers.forEach(timer => clearTimeout(timer));
+      activeTimers.clear();
+      effects.replaceChildren();
+      document.querySelectorAll('.hint').forEach(hint => hint.classList.remove('lit'));
+      showToast('PANTALLAS EN NEGRO');
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.style.opacity = '1';
+      clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        toast.style.opacity = '0';
+      }, 1100);
+    }
+
+    function setActiveModeFromKey(key) {
+      const mode = MODES[key];
+      if (!mode) return false;
+      activeMode = mode.id;
+      document.querySelectorAll('.mode-hint').forEach(hint => {
+        hint.classList.toggle('active', hint.dataset.mode === activeMode);
+        if (hint.dataset.mode === activeMode) {
+          hint.style.setProperty('--mode-color', currentPalette[0]);
+        }
+      });
+      showToast(mode.autoFire ? 'MODO ' + mode.label + ' - DISPARO TOTAL' : 'MODO ' + mode.label + ' - TOCA 1-9 O 0');
+      if (mode.autoFire) {
+        const timer = window.setTimeout(() => {
+          activeTimers.delete(timer);
+          triggerGlobalSweep(mode.id);
+        }, 20);
+        activeTimers.add(timer);
+      }
+      return true;
+    }
+
+    function fireScreenKey(key) {
+      if (key === '0') {
+        triggerGlobalSweep();
+        flashHint('0', currentPalette[0]);
+        return true;
+      }
+
+      const entry = KEYMAP.find(item => item.key === key);
+      if (!entry) return false;
+
+      triggerIds(entry.ids);
+      flashHint(entry.key, colorFor(entry.ids[0]));
+      return true;
+    }
+
+    function flashHint(key, color) {
+      const hint = document.getElementById('hint-' + key);
+      if (!hint) return;
+      hint.style.setProperty('--mode-color', color);
+      hint.classList.add('lit');
+      window.setTimeout(() => hint.classList.remove('lit'), 620);
+    }
+
+    function renderLegends() {
+      keyLegend.replaceChildren();
+      const zero = document.createElement('div');
+      zero.className = 'hint';
+      zero.id = 'hint-0';
+      zero.dataset.key = '0';
+      zero.setAttribute('role', 'button');
+      zero.innerHTML = '<span class="k">0</span><span class="label">BARRIDO</span>';
+      zero.addEventListener('click', () => fireScreenKey('0'));
+      keyLegend.appendChild(zero);
+
+      KEYMAP.forEach(entry => {
+        const div = document.createElement('div');
+        div.className = 'hint';
+        div.id = 'hint-' + entry.key;
+        div.dataset.key = entry.key;
+        div.setAttribute('role', 'button');
+        div.innerHTML = '<span class="k">' + entry.key + '</span><span class="label">' + entry.label + '</span>';
+        div.addEventListener('click', () => fireScreenKey(entry.key));
+        keyLegend.appendChild(div);
+      });
+
+      modeLegend.replaceChildren();
+      Object.values(MODES).forEach(mode => {
+        const div = document.createElement('div');
+        div.className = 'hint mode-hint';
+        div.dataset.mode = mode.id;
+        div.dataset.modeKey = mode.key.toLowerCase();
+        div.setAttribute('role', 'button');
+        div.innerHTML = '<span class="k">' + mode.key + '</span><span class="label">' + mode.label + '</span>';
+        div.addEventListener('click', () => setActiveModeFromKey(mode.key.toLowerCase()));
+        modeLegend.appendChild(div);
+      });
+      document.querySelector('.mode-hint[data-mode="flash"]').classList.add('active');
+    }
+
+    function renderPalette() {
+      paletteSwatches.replaceChildren();
+      currentPalette.forEach((color, index) => {
+        const swatch = document.createElement('div');
+        swatch.className = 'swatch';
+        swatch.style.background = color;
+        swatch.title = color;
+        swatch.setAttribute('aria-label', 'Color ' + (index + 1) + ': ' + color);
+        paletteSwatches.appendChild(swatch);
+      });
+
+      const activeModeHint = document.querySelector('.mode-hint.active');
+      if (activeModeHint) activeModeHint.style.setProperty('--mode-color', currentPalette[0]);
+      document.querySelectorAll('.decay-control').forEach(control => {
+        control.style.setProperty('--mode-color', currentPalette[0]);
+      });
+    }
+
+    function rgbToHex(r, g, b) {
+      return '#' + [r, g, b].map(value => value.toString(16).padStart(2, '0')).join('');
+    }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255;
+      g /= 255;
+      b /= 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h = 0;
+      let s = 0;
+      const l = (max + min) / 2;
+      const d = max - min;
+
+      if (d !== 0) {
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        if (max === g) h = (b - r) / d + 2;
+        if (max === b) h = (r - g) / d + 4;
+        h /= 6;
+      }
+
+      return { h, s, l };
+    }
+
+    function colorDistance(a, b) {
+      return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+    }
+
+    function pickPaletteFromImageData(imageData) {
+      const data = imageData.data;
+      const totalPixels = data.length / 4;
+      const step = Math.max(1, Math.floor(totalPixels / 12000));
+      const buckets = new Map();
+
+      for (let pixel = 0; pixel < totalPixels; pixel += step) {
+        const i = pixel * 4;
+        const alpha = data[i + 3];
+        if (alpha < 160) continue;
+
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const { s, l } = rgbToHsl(r, g, b);
+        if (l < 0.11 || l > 0.93 || s < 0.2) continue;
+
+        const key = [r >> 4, g >> 4, b >> 4].join('-');
+        const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0, s: 0, l: 0 };
+        bucket.r += r;
+        bucket.g += g;
+        bucket.b += b;
+        bucket.s += s;
+        bucket.l += l;
+        bucket.count += 1;
+        buckets.set(key, bucket);
+      }
+
+      const candidates = [...buckets.values()].map(bucket => {
+        const r = Math.round(bucket.r / bucket.count);
+        const g = Math.round(bucket.g / bucket.count);
+        const b = Math.round(bucket.b / bucket.count);
+        const s = bucket.s / bucket.count;
+        const l = bucket.l / bucket.count;
+        const balance = 1 - Math.abs(l - 0.56);
+        return {
+          r,
+          g,
+          b,
+          score: bucket.count * (0.65 + s) * balance
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      const chosen = [];
+      [86, 64, 42, 24].some(distance => {
+        candidates.forEach(candidate => {
+          if (chosen.length >= 6) return;
+          if (chosen.every(existing => colorDistance(existing, candidate) >= distance)) {
+            chosen.push(candidate);
+          }
+        });
+        return chosen.length >= 6;
+      });
+
+      return chosen.map(color => rgbToHex(color.r, color.g, color.b));
+    }
+
+    function loadImageFile(file) {
+      if (!file) return;
+
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        const maxSide = 180;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        const extracted = pickPaletteFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        currentPalette = [...extracted, ...DEFAULT_PALETTE].slice(0, 6);
+        renderPalette();
+        showToast('PALETA CARGADA');
+        URL.revokeObjectURL(url);
+      };
+
+      image.onerror = () => {
+        showToast('NO PUDE LEER ESA IMAGEN');
+        URL.revokeObjectURL(url);
+      };
+
+      image.src = url;
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => window.setTimeout(resolve, ms));
+    }
+
+    function setAudioStatus(text) {
+      audioStatus.textContent = text;
+    }
+
+    function isRecorderSupported() {
+      return Boolean(window.MediaRecorder && recordCanvas.captureStream);
+    }
+
+    function getRecorderMimeType() {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9',
+        'video/webm'
+      ];
+      return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    function updateAudioButtons() {
+      const hasAudio = Boolean(audioPlayer.src);
+      const canRecord = hasAudio && isRecorderSupported() && !recordingActive && !recordingStarting;
+      audioPlayBtn.disabled = !hasAudio || recordingActive || recordingStarting;
+      recordBtn.disabled = !canRecord;
+      stopRecordBtn.disabled = !(recordingActive || recordingStarting);
+
+      if (!hasAudio) {
+        audioPlayBtn.textContent = 'PLAY';
+        return;
+      }
+
+      audioPlayBtn.textContent = audioPlayer.paused ? 'PLAY' : 'PAUSA';
+    }
+
+    function setAudioFile(file) {
+      if (!file) return;
+
+      if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
+      audioObjectUrl = URL.createObjectURL(file);
+      audioPlayer.src = audioObjectUrl;
+      audioPlayer.currentTime = 0;
+      audioPlayer.load();
+      if (recordedObjectUrl) {
+        URL.revokeObjectURL(recordedObjectUrl);
+        recordedObjectUrl = '';
+      }
+      downloadVideoLink.hidden = true;
+      setAudioStatus(file.name.slice(0, 28));
+      updateAudioButtons();
+      showToast('AUDIO CARGADO');
+    }
+
+    async function toggleAudioPlayback() {
+      if (!audioPlayer.src || recordingActive || recordingStarting) return;
+
+      try {
+        if (audioPlayer.paused) {
+          await audioPlayer.play();
+        } else {
+          audioPlayer.pause();
+        }
+      } catch (error) {
+        showToast('NO PUDE REPRODUCIR EL AUDIO');
+      }
+
+      updateAudioButtons();
+    }
+
+    async function unlockAudioForCountdown() {
+      if (!audioPlayer.src) return;
+
+      const wasMuted = audioPlayer.muted;
+      try {
+        audioPlayer.muted = true;
+        await audioPlayer.play();
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+      } catch (error) {
+        audioPlayer.pause();
+      } finally {
+        audioPlayer.muted = wasMuted;
+      }
+    }
+
+    function drawStageImageToCanvas(image) {
+      const ctx = recordCanvas.getContext('2d', { alpha: false });
+      const scale = Math.min(RECORDING.width / STAGE.width, RECORDING.height / STAGE.height);
+      const drawWidth = STAGE.width * scale;
+      const drawHeight = STAGE.height * scale;
+      const x = (RECORDING.width - drawWidth) / 2;
+      const y = (RECORDING.height - drawHeight) / 2;
+
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, RECORDING.width, RECORDING.height);
+      ctx.drawImage(image, x, y, drawWidth, drawHeight);
+    }
+
+    async function drawStageToRecordCanvas() {
+      const svgText = new XMLSerializer().serializeToString(stage);
+      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+
+      try {
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+          image.src = url;
+        });
+        drawStageImageToCanvas(image);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function startRecordingRenderLoop() {
+      renderRecordingFrame = true;
+
+      const tick = async () => {
+        if (!renderRecordingFrame) return;
+        try {
+          await drawStageToRecordCanvas();
+        } catch (error) {
+          showToast('ERROR RENDER VIDEO');
+          stopRecording();
+          return;
+        }
+
+        if (renderRecordingFrame) {
+          renderRecordingRaf = requestAnimationFrame(tick);
+        }
+      };
+
+      tick();
+    }
+
+    function stopRecordingRenderLoop() {
+      renderRecordingFrame = false;
+      if (renderRecordingRaf) {
+        cancelAnimationFrame(renderRecordingRaf);
+        renderRecordingRaf = 0;
+      }
+    }
+
+    function getAudioCaptureStream() {
+      if (typeof audioPlayer.captureStream === 'function') return audioPlayer.captureStream();
+      if (typeof audioPlayer.mozCaptureStream === 'function') return audioPlayer.mozCaptureStream();
+      return null;
+    }
+
+    function finalizeRecording() {
+      stopRecordingRenderLoop();
+      recordingActive = false;
+      recordingStarting = false;
+      audioPlayer.pause();
+      setAudioStatus(audioPlayer.src ? 'VIDEO LISTO' : 'SIN AUDIO');
+
+      if (recordingStream) {
+        recordingStream.getTracks().forEach(track => track.stop());
+        recordingStream = null;
+      }
+
+      if (!recordingChunks.length) {
+        showToast('GRABACION VACIA');
+        updateAudioButtons();
+        return;
+      }
+
+      if (recordedObjectUrl) URL.revokeObjectURL(recordedObjectUrl);
+
+      const mimeType = mediaRecorder && mediaRecorder.mimeType ? mediaRecorder.mimeType : 'video/webm';
+      const blob = new Blob(recordingChunks, { type: mimeType });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      recordedObjectUrl = URL.createObjectURL(blob);
+
+      downloadVideoLink.href = recordedObjectUrl;
+      downloadVideoLink.download = 'aladin_show_2400x1200_' + stamp + '.webm';
+      downloadVideoLink.hidden = false;
+      downloadVideoLink.click();
+
+      mediaRecorder = null;
+      recordingChunks = [];
+      updateAudioButtons();
+      showToast('VIDEO LISTO 2400X1200');
+    }
+
+    async function startRecording() {
+      if (!audioPlayer.src || recordingActive) return;
+
+      const mimeType = getRecorderMimeType();
+      if (!isRecorderSupported() || !mimeType) {
+        showToast('GRABACION NO SOPORTADA');
+        return;
+      }
+
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      await drawStageToRecordCanvas();
+
+      const canvasStream = recordCanvas.captureStream(RECORDING.fps);
+      const audioStream = getAudioCaptureStream();
+      const tracks = [...canvasStream.getVideoTracks()];
+
+      if (audioStream) {
+        tracks.push(...audioStream.getAudioTracks());
+      } else {
+        showToast('GRABANDO SIN AUDIO');
+      }
+
+      recordingStream = new MediaStream(tracks);
+      recordingChunks = [];
+      mediaRecorder = new MediaRecorder(recordingStream, { mimeType });
+      mediaRecorder.ondataavailable = event => {
+        if (event.data && event.data.size) recordingChunks.push(event.data);
+      };
+      mediaRecorder.onstop = finalizeRecording;
+      mediaRecorder.onerror = () => {
+        showToast('ERROR GRABANDO');
+        stopRecording();
+      };
+
+      mediaRecorder.start(250);
+      recordingActive = true;
+      recordingStarting = false;
+      setAudioStatus('GRABANDO');
+      updateAudioButtons();
+      startRecordingRenderLoop();
+
+      try {
+        await audioPlayer.play();
+        showToast('GRABANDO 2400X1200');
+      } catch (error) {
+        showToast('NO PUDE ARRANCAR AUDIO');
+        stopRecording();
+      }
+    }
+
+    function stopRecording() {
+      if (!recordingActive && !recordingStarting) return;
+
+      if (recordingStarting && !recordingActive) {
+        recordingStarting = false;
+        countdownOverlay.hidden = true;
+        setAudioStatus(audioPlayer.src ? 'LISTO' : 'SIN AUDIO');
+        updateAudioButtons();
+        return;
+      }
+
+      recordingStarting = false;
+      countdownOverlay.hidden = true;
+      stopRecordingRenderLoop();
+      audioPlayer.pause();
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      } else {
+        finalizeRecording();
+      }
+    }
+
+    async function countdownAndRecord() {
+      if (!audioPlayer.src || recordingActive || recordingStarting) return;
+
+      recordingStarting = true;
+      downloadVideoLink.hidden = true;
+      setAudioStatus('CUENTA');
+      updateAudioButtons();
+      await unlockAudioForCountdown();
+
+      for (const value of ['3', '2', '1']) {
+        if (!recordingStarting) return;
+        countdownOverlay.textContent = value;
+        countdownOverlay.hidden = false;
+        await sleep(1000);
+      }
+
+      if (!recordingStarting) return;
+      countdownOverlay.textContent = 'GO';
+      await sleep(180);
+      countdownOverlay.hidden = true;
+      await startRecording();
+    }
+
+    document.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if (event.repeat) return;
+
+      if (key === 'escape') {
+        event.preventDefault();
+        resetAll();
+        return;
+      }
+
+      if (setActiveModeFromKey(key)) {
+        event.preventDefault();
+        return;
+      }
+
+      if (event.key === '0') {
+        event.preventDefault();
+        fireScreenKey('0');
+        return;
+      }
+
+      if (fireScreenKey(event.key)) {
+        event.preventDefault();
+      }
+    });
+
+    imageInput.addEventListener('change', event => {
+      loadImageFile(event.target.files[0]);
+      event.target.value = '';
+    });
+
+    audioInput.addEventListener('change', event => {
+      setAudioFile(event.target.files[0]);
+      event.target.value = '';
+    });
+
+    audioPlayBtn.addEventListener('click', toggleAudioPlayback);
+    recordBtn.addEventListener('click', countdownAndRecord);
+    stopRecordBtn.addEventListener('click', stopRecording);
+
+    audioPlayer.addEventListener('play', updateAudioButtons);
+    audioPlayer.addEventListener('pause', updateAudioButtons);
+    audioPlayer.addEventListener('ended', () => {
+      if (recordingActive) stopRecording();
+      updateAudioButtons();
+    });
+
+    decaySlider.addEventListener('input', updateDecayLabel);
+    decaySlider.addEventListener('change', updateDecayLabel);
+
+    setupStage();
+    renderLegends();
+    renderPalette();
+    updateDecayLabel();
+    updateAudioButtons();
+
+    if (!isRecorderSupported()) {
+      setAudioStatus('SIN REC');
+      showToast('GRABACION NO SOPORTADA');
+    }
+  </script>
+</body>
+</html>
