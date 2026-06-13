@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pantallas LED - Plano actualizado</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #06060e;
+      --panel: #0e1320;
+      --panel-line: #1c2639;
+      --text: #d7ebea;
+      --muted: #7aa9ab;
+      --accent: #78d5e0;
+      --screen: #17a8a8;
+      --side: #5cbfc6;
+      --stage-top: #5b5574;
+      --stage-front: #b78a2e;
+      --stage-base: #3b3b3b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 28px 18px 40px;
+    }
+
+    main {
+      width: min(1480px, 100%);
+      display: grid;
+      gap: 18px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: clamp(1.6rem, 2.5vw, 2.4rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 0.92;
+    }
+
+    .title-block p {
+      margin: 10px 0 0;
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .badge,
+    .action-btn {
+      border: 1px solid var(--panel-line);
+      border-radius: 999px;
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.75rem;
+    }
+
+    .badge {
+      background: rgba(120, 213, 224, 0.08);
+      color: var(--accent);
+    }
+
+    .action-btn {
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 140ms ease, transform 140ms ease;
+    }
+
+    .action-btn:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .canvas-shell {
+      background: var(--panel);
+      border: 1px solid var(--panel-line);
+      border-radius: 24px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #05070d;
+      border-radius: 14px;
+    }
+
+    .footer-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    @media (max-width: 860px) {
+      body { padding-inline: 10px; }
+      .canvas-shell { padding: 10px; }
+      .toolbar { justify-content: flex-start; }
+      .badge,
+      .action-btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="title-block">
+        <h1>Layout Pantallas LED</h1>
+        <p>Plano actualizado con rotulos de resolucion P3.9 calculados con pitch exacto 3.90625 mm.</p>
+      </div>
+      <div class="toolbar">
+        <span class="badge">P3.9 exacto 3.90625 mm</span>
+        <button id="toggleGridBtn" class="action-btn" type="button">Generar grilla compacta</button>
+        <button id="toggleCleanGridBtn" class="action-btn" type="button">Generar grilla limpia</button>
+        <button id="exportFrontSvgBtn" class="action-btn" type="button">Bajar frontal SVG</button>
+        <button id="exportCompactSvgBtn" class="action-btn" type="button">Bajar compacta SVG</button>
+        <button id="exportCleanSvgBtn" class="action-btn" type="button">Bajar limpia SVG</button>
+      </div>
+    </header>
+
+    <section class="canvas-shell">
+      <svg id="layoutSvg" viewBox="0 0 1420 620" xmlns="http://www.w3.org/2000/svg" style="font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif"></svg>
+    </section>
+
+    <section id="gridShell" class="canvas-shell" hidden>
+      <svg id="gridSvg" xmlns="http://www.w3.org/2000/svg" style="font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif"></svg>
+    </section>
+
+    <section id="cleanGridShell" class="canvas-shell" hidden>
+      <svg id="cleanGridSvg" xmlns="http://www.w3.org/2000/svg" style="font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif"></svg>
+    </section>
+
+    <p class="footer-note">Vista frontal limpia del escenario de pantallas.</p>
+  </main>
+
+  <script>
+    const SCALE = 48;
+    const PITCH_MM = 3.90625;
+    const PX_PER_METER = Math.round(1000 / PITCH_MM);
+    const svg = document.getElementById('layoutSvg');
+    const exportFrontSvgBtn = document.getElementById('exportFrontSvgBtn');
+    const exportCompactSvgBtn = document.getElementById('exportCompactSvgBtn');
+    const exportCleanSvgBtn = document.getElementById('exportCleanSvgBtn');
+    const gridSvg = document.getElementById('gridSvg');
+    const gridShell = document.getElementById('gridShell');
+    const toggleGridBtn = document.getElementById('toggleGridBtn');
+    const cleanGridSvg = document.getElementById('cleanGridSvg');
+    const cleanGridShell = document.getElementById('cleanGridShell');
+    const toggleCleanGridBtn = document.getElementById('toggleCleanGridBtn');
+
+    const DIMENSIONS = {
+      rompimiento: { width: 14, height: 1 },
+      pata1: { width: 1.5, height: 5 },
+      pata2: { width: 1.5, height: 5 },
+      fondo: { width: 12, height: 5 },
+      balconyA: { width: 1.5, height: 2 },
+      balconyB: { width: 1.5, height: 2 }
+    };
+
+    const palette = {
+      background: '#05070d',
+      panelLine: '#182330',
+      dim: '#8ebccc',
+      dimStrong: '#5ea6cf',
+      note: '#7eb0b7',
+      frame: 'rgba(255, 218, 74, 0.22)',
+      frameStroke: '#ffda4a',
+      side: 'rgba(96, 192, 198, 0.55)',
+      legPrimary: 'rgba(51, 255, 154, 0.18)',
+      legSecondary: 'rgba(36, 87, 255, 0.18)',
+      main: 'rgba(255, 52, 72, 0.18)',
+      balcony: 'rgba(245, 176, 112, 0.22)',
+      balconyLeft: 'rgba(255, 151, 42, 0.22)',
+      balconyRight: 'rgba(255, 78, 166, 0.22)',
+      stroke: '#101010',
+      diag: '#214d52',
+      textDark: '#090909',
+      textSoft: '#173639',
+      frameText: '#ffe88f',
+      mainStroke: '#ff3448',
+      mainText: '#ff9aa4',
+      legPrimaryStroke: '#33ff9a',
+      legSecondaryStroke: '#2457ff',
+      legPrimaryText: '#9dffd0',
+      legSecondaryText: '#9db5ff',
+      balconyLeftStroke: '#ff972a',
+      balconyRightStroke: '#ff4ea6',
+      balconyLeftText: '#ffd0a1',
+      balconyRightText: '#ffacd5',
+    };
+
+    function pxLabel(widthMeters, heightMeters) {
+      const widthPx = Math.round(widthMeters * PX_PER_METER);
+      const heightPx = Math.round(heightMeters * PX_PER_METER);
+      return `${widthPx} x ${heightPx} px`;
+    }
+
+    function compactPxLabel(widthMeters, heightMeters) {
+      return pxLabel(widthMeters, heightMeters).replace(/ x /, 'x').replace(' px', '');
+    }
+
+    function diagonalMarkup(box, stroke, opacity = 0.36, strokeWidth = 1.7) {
+      const inset = Math.min(strokeWidth / 2, box.width / 2, box.height / 2);
+      const x1 = box.x + inset;
+      const y1 = box.y + inset;
+      const x2 = box.x + box.width - inset;
+      const y2 = box.y + box.height - inset;
+
+      return `
+        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-opacity="${opacity}" vector-effect="non-scaling-stroke" />
+        <line x1="${x2}" y1="${y1}" x2="${x1}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-opacity="${opacity}" vector-effect="non-scaling-stroke" />
+      `;
+    }
+
+    function rectMarkup(box, options = {}) {
+      const {
+        fill,
+        stroke = palette.stroke,
+        strokeWidth = 1,
+        rx = 0,
+        diagonals = true,
+        diagonalColor = palette.diag
+      } = options;
+
+      const insideStroke = 1;
+      const inset = insideStroke / 2;
+      const innerX = box.x + inset;
+      const innerY = box.y + inset;
+      const innerW = Math.max(0, box.width - insideStroke);
+      const innerH = Math.max(0, box.height - insideStroke);
+      const innerRx = Math.max(0, rx - inset);
+
+      return `
+        <rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="${fill}" stroke="none" rx="${rx}" />
+        <rect x="${innerX}" y="${innerY}" width="${innerW}" height="${innerH}" fill="none" stroke="${stroke}" stroke-width="${insideStroke}" rx="${innerRx}" vector-effect="non-scaling-stroke" />
+        ${diagonals ? diagonalMarkup(box, diagonalColor) : ''}
+      `;
+    }
+
+    function centeredText(lines, x, y, options = {}) {
+      const {
+        fill = palette.textDark,
+        sizes = [],
+        weights = [],
+        spacing = [],
+        lineHeight = 20
+      } = options;
+      const startY = y - (((lines.length - 1) * lineHeight) / 2);
+
+      return `
+        <text x="${x}" y="${startY}" text-anchor="middle">
+          ${lines.map((line, index) => `
+            <tspan
+              x="${x}"
+              y="${startY + (index * lineHeight)}"
+              fill="${Array.isArray(fill) ? fill[index] || fill[0] : fill}"
+              font-size="${sizes[index] || sizes[0] || 16}"
+              font-weight="${weights[index] || weights[0] || 600}"
+              letter-spacing="${spacing[index] || spacing[0] || '0.04em'}"
+            >${line}</tspan>
+          `).join('')}
+        </text>
+      `;
+    }
+
+    function verticalText(lines, x, y, options = {}) {
+      const {
+        fill = palette.textDark,
+        sizes = [],
+        weights = [],
+        spacing = [],
+        lineHeight = 18
+      } = options;
+      const startY = y - (((lines.length - 1) * lineHeight) / 2);
+
+      return `
+        <g transform="rotate(-90 ${x} ${y})">
+          <text x="${x}" y="${startY}" text-anchor="middle">
+            ${lines.map((line, index) => `
+              <tspan
+                x="${x}"
+                y="${startY + (index * lineHeight)}"
+                fill="${Array.isArray(fill) ? fill[index] || fill[0] : fill}"
+                font-size="${sizes[index] || sizes[0] || 14}"
+                font-weight="${weights[index] || weights[0] || 600}"
+                letter-spacing="${spacing[index] || spacing[0] || '0.05em'}"
+              >${line}</tspan>
+            `).join('')}
+          </text>
+        </g>
+      `;
+    }
+
+    function renderFrontView(options = {}) {
+      const scale = options.scale || SCALE;
+      const originX = options.originX ?? 250;
+      const floorY = options.floorY ?? 560;
+      const textScale = scale / SCALE;
+      const scaleSize = (value) => Number((value * textScale).toFixed(3));
+      const scaleSizes = (values) => values.map(scaleSize);
+      const specs = DIMENSIONS;
+      const stackHeight = (specs.pata1.height + specs.rompimiento.height) * scale;
+
+      const layer = (id, content) => `<g id="${id}" data-layer="${id}">${content}</g>`;
+
+      // Rompimiento define el ancho total (14 m). P1 arranca exactamente donde arranca rompimiento.
+      // P2 arranca justo en el limite de la pantalla de fondo.
+      // Fondo (12 m) queda centrado respecto del rompimiento.
+      const rompimiento = { x: originX, y: floorY - stackHeight, width: specs.rompimiento.width * scale, height: specs.rompimiento.height * scale };
+      const leftLeg = { x: rompimiento.x, y: floorY - (specs.pata1.height * scale), width: specs.pata1.width * scale, height: specs.pata1.height * scale };
+      const rightLeg = { x: rompimiento.x + rompimiento.width - (specs.pata1.width * scale), y: leftLeg.y, width: specs.pata1.width * scale, height: specs.pata1.height * scale };
+      const fondo = { x: rompimiento.x + ((rompimiento.width - (specs.fondo.width * scale)) / 2), y: leftLeg.y, width: specs.fondo.width * scale, height: specs.fondo.height * scale };
+      const leftPata2 = { x: fondo.x, y: leftLeg.y, width: specs.pata2.width * scale, height: specs.pata2.height * scale };
+      const rightPata2 = { x: fondo.x + fondo.width - (specs.pata2.width * scale), y: leftLeg.y, width: specs.pata2.width * scale, height: specs.pata2.height * scale };
+
+      // Balcones IZQ y DER entran hacia el centro despues de P2.
+      const balconyGap = 0;
+      const balconyY = floorY - (specs.balconyA.height * scale);
+      const balconyLeftB = { x: leftPata2.x + leftPata2.width + balconyGap, y: balconyY, width: specs.balconyB.width * scale, height: specs.balconyB.height * scale };
+      const balconyLeftA = { x: balconyLeftB.x + balconyLeftB.width, y: balconyY, width: specs.balconyA.width * scale, height: specs.balconyA.height * scale };
+      const balconyRightB = { x: rightPata2.x - balconyGap - (specs.balconyB.width * scale), y: balconyY, width: specs.balconyB.width * scale, height: specs.balconyB.height * scale };
+      const balconyRightA = { x: balconyRightB.x - (specs.balconyA.width * scale), y: balconyY, width: specs.balconyA.width * scale, height: specs.balconyA.height * scale };
+
+      const centerX = (leftLeg.x + rightLeg.x + rightLeg.width) / 2;
+
+      return `
+        <g id="front-view">
+          ${layer('screen-fondo', `
+            ${rectMarkup(fondo, { fill: palette.main, stroke: palette.mainStroke, diagonalColor: palette.mainStroke, strokeWidth: 1 })}
+            ${centeredText(['PANTALLA DE FONDO', pxLabel(specs.fondo.width, specs.fondo.height), 'P3.9'], fondo.x + (fondo.width / 2), fondo.y + (fondo.height / 2), {
+              fill: [palette.mainText, palette.mainText, palette.mainText],
+              sizes: scaleSizes([22, 14, 13]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(22)
+            })}
+          `)}
+
+          ${layer('screen-p2-izq', `
+            ${rectMarkup(leftPata2, { fill: palette.legSecondary, stroke: palette.legSecondaryStroke, diagonalColor: palette.legSecondaryStroke, strokeWidth: 1, diagonals: true })}
+            ${verticalText([`P2 ${compactPxLabel(specs.pata2.width, specs.pata2.height)}`], leftPata2.x + (leftPata2.width / 2), leftPata2.y + (leftPata2.height / 2), {
+              fill: [palette.legSecondaryText],
+              sizes: scaleSizes([7.5]),
+              lineHeight: scaleSize(8)
+            })}
+          `)}
+
+          ${layer('screen-p2-der', `
+            ${rectMarkup(rightPata2, { fill: palette.legSecondary, stroke: palette.legSecondaryStroke, diagonalColor: palette.legSecondaryStroke, strokeWidth: 1, diagonals: true })}
+            ${verticalText([`P2 ${compactPxLabel(specs.pata2.width, specs.pata2.height)}`], rightPata2.x + (rightPata2.width / 2), rightPata2.y + (rightPata2.height / 2), {
+              fill: [palette.legSecondaryText],
+              sizes: scaleSizes([7.5]),
+              lineHeight: scaleSize(8)
+            })}
+          `)}
+
+          ${layer('screen-p1-izq', `
+            ${rectMarkup(leftLeg, { fill: palette.legPrimary, stroke: palette.legPrimaryStroke, diagonalColor: palette.legPrimaryStroke, strokeWidth: 1, diagonals: true })}
+            ${verticalText(['P1', compactPxLabel(specs.pata1.width, specs.pata1.height), 'P3.9'], leftLeg.x + (leftLeg.width / 2), leftLeg.y + (leftLeg.height / 2), {
+              fill: [palette.legPrimaryText],
+              sizes: scaleSizes([8, 5.2, 5.2]),
+              lineHeight: scaleSize(6.6)
+            })}
+          `)}
+
+          ${layer('screen-p1-der', `
+            ${rectMarkup(rightLeg, { fill: palette.legPrimary, stroke: palette.legPrimaryStroke, diagonalColor: palette.legPrimaryStroke, strokeWidth: 1, diagonals: true })}
+            ${verticalText(['P1', compactPxLabel(specs.pata1.width, specs.pata1.height), 'P3.9'], rightLeg.x + (rightLeg.width / 2), rightLeg.y + (rightLeg.height / 2), {
+              fill: [palette.legPrimaryText],
+              sizes: scaleSizes([8, 5.2, 5.2]),
+              lineHeight: scaleSize(6.6)
+            })}
+          `)}
+
+          ${layer('screen-rompimiento', `
+            ${rectMarkup(rompimiento, { fill: palette.frame, stroke: palette.frameStroke, diagonalColor: palette.frameStroke, strokeWidth: 1 })}
+            ${centeredText(['ROMPIMIENTO', pxLabel(specs.rompimiento.width, specs.rompimiento.height), 'P3.9'], rompimiento.x + (rompimiento.width / 2), rompimiento.y + (rompimiento.height / 2), {
+              fill: [palette.frameText, palette.frameText, palette.frameText],
+              sizes: scaleSizes([13, 7, 6.5]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(8)
+            })}
+          `)}
+
+          ${layer('screen-izq-a', `
+            ${rectMarkup(balconyLeftA, { fill: palette.balconyLeft, stroke: palette.balconyLeftStroke, diagonalColor: palette.balconyLeftStroke, strokeWidth: 1 })}
+            ${centeredText(['IZQ A', compactPxLabel(specs.balconyA.width, specs.balconyA.height)], balconyLeftA.x + (balconyLeftA.width / 2), balconyLeftA.y + (balconyLeftA.height / 2), {
+              fill: [palette.balconyLeftText, palette.balconyLeftText],
+              sizes: scaleSizes([8, 6]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(9)
+            })}
+          `)}
+
+          ${layer('screen-izq-b', `
+            ${rectMarkup(balconyLeftB, { fill: palette.balconyLeft, stroke: palette.balconyLeftStroke, diagonalColor: palette.balconyLeftStroke, strokeWidth: 1 })}
+            ${centeredText(['IZQ B', compactPxLabel(specs.balconyB.width, specs.balconyB.height)], balconyLeftB.x + (balconyLeftB.width / 2), balconyLeftB.y + (balconyLeftB.height / 2), {
+              fill: [palette.balconyLeftText, palette.balconyLeftText],
+              sizes: scaleSizes([7, 5.2]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(7)
+            })}
+          `)}
+
+          ${layer('screen-der-b', `
+            ${rectMarkup(balconyRightB, { fill: palette.balconyRight, stroke: palette.balconyRightStroke, diagonalColor: palette.balconyRightStroke, strokeWidth: 1 })}
+            ${centeredText(['DER B', compactPxLabel(specs.balconyB.width, specs.balconyB.height)], balconyRightB.x + (balconyRightB.width / 2), balconyRightB.y + (balconyRightB.height / 2), {
+              fill: [palette.balconyRightText, palette.balconyRightText],
+              sizes: scaleSizes([7, 5.2]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(7)
+            })}
+          `)}
+
+          ${layer('screen-der-a', `
+            ${rectMarkup(balconyRightA, { fill: palette.balconyRight, stroke: palette.balconyRightStroke, diagonalColor: palette.balconyRightStroke, strokeWidth: 1 })}
+            ${centeredText(['DER A', compactPxLabel(specs.balconyA.width, specs.balconyA.height)], balconyRightA.x + (balconyRightA.width / 2), balconyRightA.y + (balconyRightA.height / 2), {
+              fill: [palette.balconyRightText, palette.balconyRightText],
+              sizes: scaleSizes([8, 6]),
+              weights: [700, 600, 600],
+              lineHeight: scaleSize(9)
+            })}
+          `)}
+        </g>
+      `;
+    }
+
+    function renderSvg() {
+      svg.innerHTML = `
+        <rect width="1420" height="620" fill="${palette.background}" />
+        ${renderFrontView()}
+      `;
+    }
+
+    function serializeSvgElement(svgElement) {
+      const serializer = new XMLSerializer();
+      let svgString = serializer.serializeToString(svgElement);
+
+      if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
+        svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      if (!svgString.startsWith('<?xml')) {
+        svgString = `<?xml version="1.0" encoding="UTF-8"?>\n${svgString}`;
+      }
+
+      return svgString;
+    }
+
+    function downloadBlob(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function buildCombinedExportSvg() {
+      renderSvg();
+      renderCompactGrid();
+      renderCleanCompactGrid();
+
+      const mainBox = svg.viewBox.baseVal;
+      const gridBox = gridSvg.viewBox.baseVal;
+      const cleanGridBox = cleanGridSvg.viewBox.baseVal;
+      const gap = 42;
+      const exportWidth = Math.max(mainBox.width, gridBox.width, cleanGridBox.width);
+      const exportHeight = mainBox.height + gap + gridBox.height + gap + cleanGridBox.height;
+      const gridOffsetX = (exportWidth - gridBox.width) / 2;
+      const cleanGridOffsetX = (exportWidth - cleanGridBox.width) / 2;
+      const gridOffsetY = mainBox.height + gap;
+      const cleanGridOffsetY = mainBox.height + gap + gridBox.height + gap;
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${exportWidth} ${exportHeight}" shape-rendering="geometricPrecision" style="font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif">
+  <rect width="${exportWidth}" height="${exportHeight}" fill="${palette.background}" />
+  <g id="pantalla-frontal" data-layer="pantalla-frontal">
+    ${svg.innerHTML}
+  </g>
+  <g id="pantalla-grilla-compacta" data-layer="pantalla-grilla-compacta" transform="translate(${gridOffsetX} ${gridOffsetY})">
+    ${gridSvg.innerHTML}
+  </g>
+  <g id="pantalla-grilla-limpia" data-layer="pantalla-grilla-limpia" transform="translate(${cleanGridOffsetX} ${cleanGridOffsetY})">
+    ${cleanGridSvg.innerHTML}
+  </g>
+</svg>`;
+    }
+
+    function buildFrontLayoutExportSvg() {
+      const exportWidth = DIMENSIONS.rompimiento.width * PX_PER_METER;
+      const exportHeight = (DIMENSIONS.pata1.height + DIMENSIONS.rompimiento.height) * PX_PER_METER;
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${exportWidth} ${exportHeight}" width="${exportWidth}px" height="${exportHeight}px" preserveAspectRatio="xMinYMin meet" shape-rendering="crispEdges" style="width:${exportWidth}px;height:${exportHeight}px;font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif">
+  <rect id="export-size-${exportWidth}x${exportHeight}" x="0" y="0" width="${exportWidth}" height="${exportHeight}" fill="transparent" stroke="none" />
+  ${renderFrontView({ scale: PX_PER_METER, originX: 0, floorY: exportHeight })}
+</svg>`;
+    }
+
+    function buildCompactGridExportSvg() {
+      renderCompactGrid();
+
+      const viewBox = gridSvg.getAttribute('viewBox');
+      const [, , exportWidth, exportHeight] = viewBox.split(/\s+/).map(Number);
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${exportWidth}px" height="${exportHeight}px" preserveAspectRatio="xMinYMin meet" shape-rendering="crispEdges" style="width:${exportWidth}px;height:${exportHeight}px;font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif">
+  ${gridSvg.innerHTML}
+</svg>`;
+    }
+
+    function buildCleanGridExportSvg() {
+      renderCleanCompactGrid();
+
+      const viewBox = cleanGridSvg.getAttribute('viewBox');
+      const width = cleanGridSvg.getAttribute('width');
+      const height = cleanGridSvg.getAttribute('height');
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${width}" height="${height}" preserveAspectRatio="xMinYMin meet" shape-rendering="crispEdges" style="width:${width};height:${height};font-family:'Avenir Next Condensed','Arial Narrow','Helvetica Neue',sans-serif">
+  ${cleanGridSvg.innerHTML}
+</svg>`;
+    }
+
+    function exportFrontSvg() {
+      downloadBlob(new Blob([buildFrontLayoutExportSvg()], { type: 'image/svg+xml;charset=utf-8' }), 'aladin_grilla_frontal_p3_9.svg');
+    }
+
+    function exportCompactSvg() {
+      downloadBlob(new Blob([buildCompactGridExportSvg()], { type: 'image/svg+xml;charset=utf-8' }), 'aladin_grilla_compacta_p3_9.svg');
+    }
+
+    function exportCleanSvg() {
+      downloadBlob(new Blob([buildCleanGridExportSvg()], { type: 'image/svg+xml;charset=utf-8' }), 'aladin_grilla_limpia_p3_9_6144x1536.svg');
+    }
+
+    function renderCompactGrid() {
+      // Version compacta con P1 afuera y P2 al limite de la pantalla de fondo.
+      // Escala mas chica para minimo form factor.
+      const GS = 28;
+      const pad = 14;
+      const gap = 0;
+      const titleH = 24;
+      const specs = DIMENSIONS;
+
+      const rompW = specs.rompimiento.width * GS;
+      const rompH = specs.rompimiento.height * GS;
+      const legW = specs.pata1.width * GS;
+      const legH = specs.pata1.height * GS;
+      const balAW = specs.balconyA.width * GS;
+      const balBW = specs.balconyB.width * GS;
+      const balH = specs.balconyA.height * GS;
+      const p2W = specs.pata2.width * GS;
+      const p1W = legW;
+      const p1H = legH;
+      const balGroupW = Math.max(balAW, balBW);
+
+      // X de izq a der: bal IZQ | P1 IZQ | FONDO | P1 DER | bal DER.
+      // P2 se monta sobre los limites izquierdo y derecho del fondo.
+      const xBalL = pad;
+      const xP1L = xBalL + balGroupW + gap;
+      const xFondo = xP1L + p1W + gap;
+      const xP1R = xFondo + (specs.fondo.width * GS) + gap;
+      const xBalR = xP1R + p1W + gap;
+      const totalW = xBalR + balGroupW - pad;
+      const vbW = totalW + pad;
+
+      const topY = pad + titleH;
+      const legY = topY + rompH + gap;
+      const floorY = legY + legH;
+      const vbH = floorY + pad;
+
+      // Cajas
+      const fondo = { x: xFondo, y: legY, width: specs.fondo.width * GS, height: specs.fondo.height * GS };
+      const rompimiento = { x: fondo.x - ((rompW - fondo.width) / 2), y: topY, width: rompW, height: rompH };
+
+      const leftLeg = { x: xP1L, y: legY, width: p1W, height: p1H };
+      const rightLeg = { x: xP1R, y: legY, width: p1W, height: p1H };
+
+      // P2 arranca al mismo nivel del limite superior del fondo.
+      const p2TopY = fondo.y;
+      const p2L = { x: fondo.x, y: p2TopY, width: p2W, height: legH };
+      const p2R = { x: fondo.x + fondo.width - p2W, y: p2TopY, width: p2W, height: legH };
+
+      // Balcones apilados verticalmente: A (1,5x2) arriba, B (1x2) abajo, alineados al piso.
+      const balLB = { x: xBalL, y: floorY - balH, width: balBW, height: balH };
+      const balLA = { x: xBalL, y: balLB.y - gap - balH, width: balAW, height: balH };
+      const balRB = { x: xBalR, y: floorY - balH, width: balBW, height: balH };
+      const balRA = { x: xBalR, y: balRB.y - gap - balH, width: balAW, height: balH };
+
+      function label(box, lines, color, sizes) {
+        const cx = box.x + box.width / 2;
+        const cy = box.y + box.height / 2;
+        const isNarrow = box.width < 60;
+        const sz = sizes || [10, 7.5, 7.5];
+        const lh = sz[0] * 1.15;
+        const startY = cy - lh;
+        if (isNarrow) {
+          return `<g transform="rotate(-90 ${cx} ${cy})">${lines.map((l, i) => `<text x="${cx}" y="${startY + i * lh}" text-anchor="middle" fill="${color}" font-size="${sz[i] || sz[0]}" font-weight="${i === 0 ? 700 : 600}" letter-spacing="0.05em">${l}</text>`).join('')}</g>`;
+        }
+        return lines.map((l, i) => `<text x="${cx}" y="${startY + i * lh}" text-anchor="middle" fill="${color}" font-size="${sz[i] || sz[0]}" font-weight="${i === 0 ? 700 : 600}" letter-spacing="0.04em">${l}</text>`).join('');
+      }
+
+      const layer = (id, content) => `<g id="compact-${id}" data-layer="compact-${id}">${content}</g>`;
+
+      const draw = (box, fill, stroke) => {
+        const sw = 1;
+        const inset = sw / 2;
+        const innerX = box.x + inset;
+        const innerY = box.y + inset;
+        const innerW = Math.max(0, box.width - sw);
+        const innerH = Math.max(0, box.height - sw);
+        return `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="${fill}" stroke="none" /><rect x="${innerX}" y="${innerY}" width="${innerW}" height="${innerH}" fill="none" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke" />`;
+      };
+
+      const body = `
+        <text x="${vbW / 2}" y="${pad + 14}" fill="${palette.frameText}" font-size="14" text-anchor="middle" font-weight="700" letter-spacing="0.12em">GRILLA COMPACTA - P2 AL LIMITE DEL FONDO</text>
+
+        ${layer('fondo', `${draw(fondo, palette.main, '#3de0d4')}${label(fondo, ['PANTALLA DE FONDO', pxLabel(specs.fondo.width, specs.fondo.height), 'P3.9'], palette.mainText, [13, 9, 9])}`)}
+        ${layer('p1-izq', `${draw(leftLeg, palette.legPrimary, '#85f0df')}${label(leftLeg, ['P1 IZQ', compactPxLabel(specs.pata1.width, specs.pata1.height), 'P3.9'], palette.legPrimaryText, [8, 6, 6])}`)}
+        ${layer('p1-der', `${draw(rightLeg, palette.legPrimary, '#85f0df')}${label(rightLeg, ['P1 DER', compactPxLabel(specs.pata1.width, specs.pata1.height), 'P3.9'], palette.legPrimaryText, [8, 6, 6])}`)}
+        ${layer('rompimiento', `${draw(rompimiento, palette.frame, '#8ceaf3')}${label(rompimiento, ['ROMPIMIENTO', pxLabel(specs.rompimiento.width, specs.rompimiento.height), 'P3.9'], palette.frameText, [11, 8, 8])}`)}
+        ${layer('p2-izq', `${draw(p2L, palette.legSecondary, '#6d96ff')}${label(p2L, ['P2 IZQ', compactPxLabel(specs.pata2.width, specs.pata2.height), 'P3.9'], palette.legSecondaryText, [9, 6.5, 6.5])}`)}
+        ${layer('p2-der', `${draw(p2R, palette.legSecondary, '#6d96ff')}${label(p2R, ['P2 DER', compactPxLabel(specs.pata2.width, specs.pata2.height), 'P3.9'], palette.legSecondaryText, [9, 6.5, 6.5])}`)}
+        ${layer('izq-a', `${draw(balLA, palette.balconyLeft, '#ffbe82')}${label(balLA, ['IZQ A', compactPxLabel(specs.balconyA.width, specs.balconyA.height)], palette.balconyLeftText, [8, 6])}`)}
+        ${layer('izq-b', `${draw(balLB, palette.balconyLeft, '#ffbe82')}${label(balLB, ['IZQ B', compactPxLabel(specs.balconyB.width, specs.balconyB.height)], palette.balconyLeftText, [7, 5.5])}`)}
+        ${layer('der-a', `${draw(balRA, palette.balconyRight, '#ff9ac0')}${label(balRA, ['DER A', compactPxLabel(specs.balconyA.width, specs.balconyA.height)], palette.balconyRightText, [8, 6])}`)}
+        ${layer('der-b', `${draw(balRB, palette.balconyRight, '#ff9ac0')}${label(balRB, ['DER B', compactPxLabel(specs.balconyB.width, specs.balconyB.height)], palette.balconyRightText, [7, 5.5])}`)}
+
+        <line x1="${xBalL - 4}" y1="${floorY + 0.5}" x2="${xBalR + balGroupW + 4}" y2="${floorY + 0.5}" stroke="${palette.panelLine}" stroke-width="1" />
+      `;
+
+      gridSvg.setAttribute('viewBox', `0 0 ${vbW} ${vbH}`);
+      gridSvg.innerHTML = `<rect width="${vbW}" height="${vbH}" fill="${palette.background}" />${body}`;
+    }
+
+    function renderCleanCompactGrid() {
+      const vbW = 24 * PX_PER_METER;
+      const vbH = 6 * PX_PER_METER;
+      const mBox = (x, y, width, height) => ({
+        x: x * PX_PER_METER,
+        y: y * PX_PER_METER,
+        width: width * PX_PER_METER,
+        height: height * PX_PER_METER
+      });
+
+      const fondo = mBox(6, 1, 12, 5);
+      const rompimiento = mBox(5, 0, 14, 1);
+      const leftLeg = mBox(3, 1, 1.5, 5);
+      const p2L = mBox(4.5, 1, 1.5, 5);
+      const p2R = mBox(18, 1, 1.5, 5);
+      const rightLeg = mBox(19.5, 1, 1.5, 5);
+      const balLB = mBox(0, 4, 1.5, 2);
+      const balLA = mBox(1.5, 4, 1.5, 2);
+      const balRA = mBox(21, 4, 1.5, 2);
+      const balRB = mBox(22.5, 4, 1.5, 2);
+
+      const fillOnly = (id, box, fill) => `<rect id="${id}" data-layer="${id}" data-name="${id}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="${fill}" />`;
+
+      const body = `
+        ${fillOnly('pantalla-fondo', fondo, palette.main)}
+        ${fillOnly('p1-izq', leftLeg, palette.legPrimary)}
+        ${fillOnly('p1-der', rightLeg, palette.legPrimary)}
+        ${fillOnly('rompimiento', rompimiento, palette.frame)}
+        ${fillOnly('p2-izq', p2L, palette.legSecondary)}
+        ${fillOnly('p2-der', p2R, palette.legSecondary)}
+        ${fillOnly('izq-a', balLA, palette.balconyLeft)}
+        ${fillOnly('izq-b', balLB, palette.balconyLeft)}
+        ${fillOnly('der-a', balRA, palette.balconyRight)}
+        ${fillOnly('der-b', balRB, palette.balconyRight)}
+      `;
+
+      cleanGridSvg.setAttribute('viewBox', `0 0 ${vbW} ${vbH}`);
+      cleanGridSvg.setAttribute('width', `${vbW}px`);
+      cleanGridSvg.setAttribute('height', `${vbH}px`);
+      cleanGridSvg.innerHTML = body;
+    }
+
+    toggleGridBtn.addEventListener('click', () => {
+      const willShow = gridShell.hasAttribute('hidden');
+      if (willShow) {
+        renderCompactGrid();
+        gridShell.removeAttribute('hidden');
+        toggleGridBtn.textContent = 'Ocultar grilla compacta';
+      } else {
+        gridShell.setAttribute('hidden', '');
+        toggleGridBtn.textContent = 'Generar grilla compacta';
+      }
+    });
+
+    toggleCleanGridBtn.addEventListener('click', () => {
+      const willShow = cleanGridShell.hasAttribute('hidden');
+      if (willShow) {
+        renderCleanCompactGrid();
+        cleanGridShell.removeAttribute('hidden');
+        toggleCleanGridBtn.textContent = 'Ocultar grilla limpia';
+      } else {
+        cleanGridShell.setAttribute('hidden', '');
+        toggleCleanGridBtn.textContent = 'Generar grilla limpia';
+      }
+    });
+
+    exportFrontSvgBtn.addEventListener('click', exportFrontSvg);
+    exportCompactSvgBtn.addEventListener('click', exportCompactSvg);
+    exportCleanSvgBtn.addEventListener('click', exportCleanSvg);
+
+    renderSvg();
+  </script>
+</body>
+</html>
